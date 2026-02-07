@@ -13,5 +13,20 @@ This folder contains the step‑by‑step implementation plan, broken by phase.
 3. **Phase 3 — Policy Layer**
    - `plan/phase-3/README.md`
    - `plan/phase-3/flow.md`
+4. **Phase 4 — Memory Store**
+   - `plan/phase-4/README.md`
+   - `plan/phase-4/flow.md`
+5. **Phase 5 — Multi-Step Reasoning**
+   - `plan/phase-5/README.md`
+   - `plan/phase-5/flow.md`
+6. **Phase 6 — Multi-Camera Correlation**
+   - `plan/phase-6/README.md`
+   - `plan/phase-6/flow.md`
+7. **Phase 7 — Conversation Mode**
+   - `plan/phase-7/README.md`
+   - `plan/phase-7/flow.md`
+8. **Phase 8 — Summaries & Reports**
+   - `plan/phase-8/README.md`
+   - `plan/phase-8/flow.md`
 
 Next phases will be added once Phase 1 is finalized.
