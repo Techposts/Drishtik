@@ -121,6 +121,12 @@ bash scripts/install.sh
 - WhatsApp should receive **image + analysis**
 - HA should show **pending**, then update with the final analysis
 
+### What Happens During AI Analysis
+
+When a person is detected, the bridge pulls a snapshot from Frigate and sends it to **OpenClaw**, which runs **GPT‑4o‑mini vision**. OpenClaw returns a short, structured security assessment, and the bridge publishes it to MQTT. That is why HA first shows **pending**, then updates the same alert when the final analysis arrives. WhatsApp receives the snapshot **plus** the analysis text.
+
+To make this work, make sure OpenClaw is installed, the gateway is running, and your API key/model are configured in the **OpenClaw + API Keys** section below.
+
 ---
 
 ## OpenClaw Install (Recommended)
