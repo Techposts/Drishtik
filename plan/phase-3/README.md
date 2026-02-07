@@ -82,3 +82,16 @@ POLICY:
 - Decisions change based on policy inputs
 - Logs show policy values for every event
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- Big reduction in false alarms (night/away rules)
+- Behavior adapts to home/away and time-of-day
+
+**Cons**
+- Requires reliable HA state sources
+- Policy complexity can drift without tests
+
+**Recommendation:** **High value. Do after Phase 2.**

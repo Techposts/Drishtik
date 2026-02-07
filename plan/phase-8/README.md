@@ -27,3 +27,16 @@ Generate daily/weekly summaries and trends.
 - Scheduled summary works reliably
 - Clear trends presented to user
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- High value for long-term awareness
+- Easy to implement once memory exists
+
+**Cons**
+- Depends on Phase 4 memory
+- Adds background jobs/scheduling
+
+**Recommendation:** **Do after Phase 4.**

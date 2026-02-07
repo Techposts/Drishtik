@@ -126,3 +126,16 @@ Verify logs and HA device state.
 - No accidental device triggers
 - Logs show action mapping + success/failure
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- Turns insights into real actions
+- High user value (lights, speakers, clips)
+
+**Cons**
+- Risk of false triggers if decision quality is low
+- Requires HA token security and careful allowlist
+
+**Recommendation:** **Do after Phase 1 is stable. Start with notify_only + lights.**

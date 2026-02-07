@@ -30,3 +30,16 @@ Allow user to ask questions and get snapshots/answers from OpenClaw.
 - Two-way interaction works
 - OpenClaw can answer follow-ups
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- Nice UX for power users
+- Adds “assistant” feel
+
+**Cons**
+- Low security value
+- Requires UI/channel handling for replies
+
+**Recommendation:** **Skip unless you want interactive chat.**

@@ -54,3 +54,16 @@ RECENT_EVENTS:
 - Prompt includes recent events summary
 - Decisions reflect repetition
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- Reduces repeated alerts for the same non-threat
+- Enables simple pattern detection without heavy DB
+
+**Cons**
+- Needs log rotation and privacy discipline
+- Can bias decisions if memory is wrong/noisy
+
+**Recommendation:** **Moderate value. Do after Phase 3 if alert volume is high.**

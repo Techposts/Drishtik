@@ -32,3 +32,16 @@ Reduce false alarms by adding **confirmation steps** before high-risk actions.
 - High/critical actions require confirmation
 - False positives reduced at night
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- Directly reduces false positives before escalation
+- Increases trust in automation
+
+**Cons**
+- Adds latency (extra 3–10s)
+- More complex to implement (extra frame fetch)
+
+**Recommendation:** **High value if you see night false positives. Otherwise optional.**

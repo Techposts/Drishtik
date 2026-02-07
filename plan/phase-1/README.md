@@ -144,3 +144,17 @@ JSON:
 - OpenClaw skill prompt
 - HA automation (optional display only)
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- Biggest impact for clarity and automation
+- Low risk (no device control yet)
+- Makes all future phases possible
+
+**Cons**
+- Requires strict JSON enforcement in prompts
+- Needs robust parsing + fallback
+
+**Recommendation:** **Do this first. Mandatory.**

@@ -31,3 +31,16 @@ Infer movement across cameras and reduce duplicate alerts.
 - Agent can infer “person moved from A → B”
 - Duplicate alerts reduced
 
+---
+
+## Pros / Cons / Recommendation
+
+**Pros**
+- Great for multi-camera environments
+- Reduces duplicate alerts
+
+**Cons**
+- High complexity (identity correlation is hard)
+- Error-prone without strong appearance signals
+
+**Recommendation:** **Skip for now. Advanced feature.**

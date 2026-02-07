@@ -2,7 +2,7 @@
 
 This folder contains the step‑by‑step implementation plan, broken by phase.
 
-## Phases
+## Phases (Core)
 
 1. **Phase 1 — Decision Engine**
    - `plan/phase-1/README.md`
@@ -19,14 +19,17 @@ This folder contains the step‑by‑step implementation plan, broken by phase.
 5. **Phase 5 — Multi-Step Reasoning**
    - `plan/phase-5/README.md`
    - `plan/phase-5/flow.md`
-6. **Phase 6 — Multi-Camera Correlation**
-   - `plan/phase-6/README.md`
-   - `plan/phase-6/flow.md`
-7. **Phase 7 — Conversation Mode**
-   - `plan/phase-7/README.md`
-   - `plan/phase-7/flow.md`
-8. **Phase 8 — Summaries & Reports**
+6. **Phase 8 — Summaries & Reports**
    - `plan/phase-8/README.md`
    - `plan/phase-8/flow.md`
 
-Next phases will be added once Phase 1 is finalized.
+## Optional / Advanced (High Complexity)
+
+- **Phase 6 — Multi-Camera Correlation**
+  - `plan/phase-6/README.md`
+  - `plan/phase-6/flow.md`
+- **Phase 7 — Conversation Mode**
+  - `plan/phase-7/README.md`
+  - `plan/phase-7/flow.md`
+
+These are intentionally **not part of the core roadmap** due to complexity vs. impact.
