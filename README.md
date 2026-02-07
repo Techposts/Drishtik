@@ -329,6 +329,7 @@ The bridge supports an analysis-only mode that generates AI analysis and publish
 | [FRIGATE-OPENCLAW-BRIDGE](docs/FRIGATE-OPENCLAW-BRIDGE.md) | Bridge script logic, MQTT payloads, workspace staging |
 | [HOME-ASSISTANT-SETUP](docs/HOME-ASSISTANT-SETUP.md) | MQTT sensors, automations, Alexa, Lovelace cards |
 | [OPENCLAW-API-KEYS](docs/OPENCLAW-API-KEYS.md) | OpenAI/Anthropic API key creation and model setup |
+| [OPENCLAW-CONFIG](docs/OPENCLAW-CONFIG.md) | OpenClaw gateway + messaging configuration |
 | [OpenClaw-and-Frigate](docs/OpenClaw-and-Frigate.md) | Redacted planning summary |
 | [OpenClaw Reference](scripts/openclaw/README.md) | OpenClaw CLI commands, gateway, channels, diagnostics |
 | [Roadmap Plan](plan/README.md) | Phase-by-phase implementation plan (start with Phase 1) |
