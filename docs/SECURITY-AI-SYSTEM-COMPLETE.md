@@ -4,7 +4,7 @@
 **Date:** 2026-02-07
 **Author:** Ravi (<HOME_USER>)
 **Server:** 192.168.1.10 (Debian 12, Linux 6.1.0-37-amd64)
-**Hardware:** 12-year-old laptop with Coral TPU (Half Mini PCIe) replacing the WiFi card
+**Hardware:** 12-year-old Lenovo S20-30 (59-436662) 11.6-inch laptop with Coral TPU (Half Mini PCIe) replacing the WiFi card
 
 ---
 
@@ -45,6 +45,23 @@ This runs on a **12-year-old laptop**. The performance is viable because:
 - **Person detection** runs on a **Google Coral TPU (Half Mini PCIe)**
 - The TPU is installed by **replacing the laptop WiFi card**
 - **Vision analysis** is offloaded to **OpenAI GPT-4o-mini** via OpenClaw
+
+### Reference Build (My System)
+
+- Lenovo S20-30 (59-436662) 11.6-inch laptop
+- Intel Pentium 2127U (dual core, 1.9 GHz)
+- RAM upgraded from 2GB to 8GB DDR3
+- 1TB Samsung EVO SSD
+- Coral TPU Half Mini PCIe (WiFi card replaced)
+- TP-Link USB 3.0 to Gigabit Ethernet
+- Debian 12 (Bookworm)
+- Other services: Plex Media Server, Samba
+
+Build video (placeholder):
+
+```
+https://www.youtube.com/watch?v=ePSMDSl6QvM
+```
 
 ### What It Does
 
@@ -1081,6 +1098,21 @@ Same pattern — OpenClaw supports: `whatsapp`, `telegram`, `discord`, `slack`, 
 10. Apply Home Assistant automation YAML.
 11. Enable lingering so services start at boot: `sudo loginctl enable-linger <user>`.
 12. Test end-to-end by walking in front of a camera.
+
+### Recommended System Configuration
+
+Minimum:
+- Dual-core x86_64 CPU
+- 4 GB RAM
+- SSD recommended
+- Coral TPU (USB or PCIe)
+
+Recommended:
+- Dual-core or better CPU
+- 8 GB RAM
+- SSD
+- Coral TPU (Half Mini PCIe or USB)
+- Wired Ethernet (USB 3.0 Gigabit adapter ok)
 
 ### API Keys And Model Selection
 

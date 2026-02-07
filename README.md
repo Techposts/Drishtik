@@ -10,12 +10,27 @@ It includes detailed documentation, install scripts, and example config files.
 
 ## Hardware
 
-This system runs on a **12-year-old laptop** (Debian) with:
+### Reference Build (My System)
+
+This system runs on a **12-year-old Lenovo S20-30 (59-436662) 11.6-inch laptop** with:
 
 - **Google Coral TPU (Half Mini PCIe)** installed by **replacing the WiFi card**
-- Frigate running on the same machine
-- OpenClaw gateway running on the same machine
+- **TP-Link USB 3.0 to Gigabit Ethernet** for network access
+- **1TB Samsung EVO SSD** replacing the hard drive
+- **RAM upgraded from 2GB to 8GB DDR3**
+- Debian 12 (Bookworm)
+- Runs **Frigate** + **OpenClaw** on the same box
 - AI vision analysis handled by **OpenAI GPT-4o-mini**
+
+Other services on this same server:
+- Plex Media Server
+- Samba (NAS/SMB shares)
+
+### Build Video (Placeholder)
+
+```
+https://www.youtube.com/watch?v=ePSMDSl6QvM
+```
 
 Despite the old hardware, the TPU handles detection and GPT-4o-mini handles vision analysis reliably.
 
@@ -162,6 +177,38 @@ openclaw models set anthropic/claude-sonnet-4-20250514
 10. Apply Home Assistant automation YAML.
 11. Enable lingering so services start at boot: `sudo loginctl enable-linger <user>`.
 12. Test end-to-end by walking in front of a camera.
+
+---
+
+## Recommended System Configuration
+
+Minimum (works, but tight):
+- Dual-core x86_64 CPU
+- 4 GB RAM
+- SSD recommended
+- Coral TPU (USB or PCIe)
+
+Recommended (smoother):
+- Dual-core or better CPU
+- 8 GB RAM
+- SSD
+- Coral TPU (Half Mini PCIe or USB)
+- Wired Ethernet (USB 3.0 Gigabit adapter ok)
+
+---
+
+## Setup Sequence (Clean Install)
+
+1. Install Debian + Docker + Python 3.10+.
+2. Install OpenClaw using `scripts/openclaw/install-openclaw.sh`.
+3. Add OpenAI API key and set model to `openai/gpt-4o-mini`.
+4. Configure WhatsApp/Telegram/Discord if desired (I use WhatsApp).
+5. Install Frigate and confirm snapshots are enabled.
+6. Ensure Coral TPU works (USB or PCIe).
+7. Run `scripts/setup-frigate-ai-prereqs.sh` and fix warnings.
+8. Run `scripts/install.sh` to wire the pipeline end-to-end.
+9. Apply Home Assistant automation YAML.
+10. Test end-to-end by walking in front of a camera.
 
 ---
 
