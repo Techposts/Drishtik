@@ -1,0 +1,134 @@
+# =============================================================================
+# Frigate AI Security — Home Assistant Automations
+# =============================================================================
+# Copy into your HA automations.yaml or import via Settings → Automations
+#
+# MQTT topic: openclaw/frigate/analysis
+# Payload fields: camera, label, analysis, risk, tts, timestamp,
+#                 event_id, snapshot_path
+# Risk values: "low", "medium", "high"
+#
+# Source: Frigate → OpenClaw Bridge (GPT-4o-mini vision)
+# Last updated: 2026-02-07
+# =============================================================================
+#
+# Required Helpers (create once in HA):
+#   input_datetime.frigate_ai_last_alexa
+#   input_datetime.frigate_ai_last_echo
+# You can create these via Settings → Devices & Services → Helpers.
+
+# -----------------------------------------------------------------------------
+# Single Automation — Alexa, Mobile, Echo Show, Persistent, Debug
+# -----------------------------------------------------------------------------
+- alias: "Frigate AI — Unified Automation"
+  id: frigate_ai_unified
+  description: "Unified handler for Alexa, mobile, Echo Show, persistent, and debug logging"
+  mode: parallel
+  max: 10
+  max_exceeded: silent
+
+  trigger:
+    - platform: mqtt
+      topic: "openclaw/frigate/analysis"
+
+  condition:
+    - condition: template
+      value_template: "{{ trigger.payload_json is defined }}"
+
+  action:
+    - variables:
+        risk: "{{ trigger.payload_json.risk | default('low') }}"
+        camera: "{{ trigger.payload_json.camera | default('Camera') }}"
+        analysis: "{{ trigger.payload_json.analysis | default('Detection event') }}"
+        tts: "{{ trigger.payload_json.tts | default('Security alert detected') }}"
+        event_id: "{{ trigger.payload_json.event_id | default('') }}"
+        snapshot_path: "{{ trigger.payload_json.snapshot_path | default('') }}"
+
+    # Alexa Announcement — MEDIUM/HIGH risk only, daytime, 60s cooldown
+    - choose:
+        - conditions:
+            - condition: time
+              after: "06:00:00"
+              before: "23:00:00"
+            - condition: template
+              value_template: "{{ risk in ['medium', 'high'] }}"
+            - condition: template
+              value_template: >-
+                {% set last = as_timestamp(states('input_datetime.frigate_ai_last_alexa')) or 0 %}
+                {{ (as_timestamp(now()) - last) > 60 }}
+          sequence:
+            - service: notify.alexa_media
+              data:
+                message: >-
+                  {{ tts }}
+                target:
+                  - media_player.ravi_s_echo_dot
+                  - media_player.echo_show_5
+                  - media_player.ravi_s_old_echo_dot
+                  - media_player.mom_s_echo
+                data:
+                  type: announce
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: input_datetime.frigate_ai_last_alexa
+              data:
+                datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      default: []
+
+    # Mobile Notification — all events with snapshot
+    - service: notify.notify
+      data:
+        title: >-
+          {{ camera }} — Person Detected
+        message: >-
+          {{ analysis }}
+        data:
+          image: >-
+            {{ snapshot_path }}
+          clickAction: "/lovelace/cameras"
+          tag: "frigate-{{ event_id | default(camera | default('unknown')) }}"
+          group: "frigate-security"
+
+    # Echo Show — snapshot image with 45s cooldown
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ event_id | length > 0 }}"
+            - condition: template
+              value_template: >-
+                {% set last = as_timestamp(states('input_datetime.frigate_ai_last_echo_show')) or 0 %}
+                {{ (as_timestamp(now()) - last) > 45 }}
+          sequence:
+            - service: media_player.play_media
+              target:
+                entity_id: media_player.echo_show_5
+              data:
+                media_content_type: image
+                media_content_id: >-
+                  http://192.168.1.10:5000/api/events/{{ event_id }}/snapshot.jpg
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: input_datetime.frigate_ai_last_echo_show
+              data:
+                datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      default: []
+
+    # Persistent Notification — HA sidebar
+    - service: persistent_notification.create
+      data:
+        title: >-
+          Security — {{ camera }}
+        message: >-
+          **Risk:** {{ risk | upper }}
+
+          **Time:** {{ trigger.payload_json.timestamp | default('unknown') }}
+
+          {{ analysis }}
+        notification_id: "frigate_{{ camera | default('unknown') }}"
+
+    # Debug Logger — Log raw MQTT payload
+    - service: logbook.log
+      data:
+        name: "Frigate AI"
+        message: >-
+          {{ trigger.payload }}

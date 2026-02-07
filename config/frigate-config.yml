@@ -1,0 +1,83 @@
+detectors:
+  coral:
+    type: edgetpu
+    device: pci
+
+mqtt:
+  enabled: true
+  topic_prefix: frigate
+  host: 192.168.1.20
+  port: 1885
+  user: <MQTT_USER>
+  password: <MQTT_PASS>
+  stats_interval: 61
+
+birdseye:
+  enabled: true
+  mode: continuous
+
+record:
+  enabled: true
+  expire_interval: 60
+  retain:
+    days: 15
+    mode: motion
+
+snapshots:
+  enabled: true
+  retain:
+    default: 7
+
+cameras:
+  Tapo-GarageCam:
+    ffmpeg:
+      inputs:
+        - path: rtsp://<RTSP_USER>:<RTSP_PASS>@192.168.1.101:554/stream1/1
+          roles:
+            - rtmp
+            - detect
+    detect:
+      width: 1280
+      height: 720
+      fps: 5
+    objects:
+      track:
+        - person
+        - cat
+        - dog
+    motion:
+      threshold: 25
+
+  TopStairCam:
+    ffmpeg:
+      inputs:
+        - path: rtsp://192.168.1.102/live/ch00_1
+          roles:
+            - rtmp
+            - detect
+    detect:
+      width: 1280
+      height: 720
+      fps: 5
+    objects:
+      track:
+        - person
+        - cat
+
+  TerraceCam:
+    ffmpeg:
+      inputs:
+        - path: rtsp://192.168.1.103/live/ch00_1
+          roles:
+            - rtmp
+            - detect
+    detect:
+      width: 1280
+      height: 720
+      fps: 5
+    objects:
+      track:
+        - person
+        - cat
+
+version: 0.15-1

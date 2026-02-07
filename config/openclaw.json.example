@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "enabled": true,
+    "token": "<HOOK_TOKEN>",
+    "path": "/hooks"
+  },
+  "gateway": {
+    "port": 18789
+  },
+  "channels": {
+    "whatsapp": {
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        "+1234567890"
+      ]
+    }
+  }
+}

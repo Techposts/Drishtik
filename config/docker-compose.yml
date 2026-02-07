@@ -1,0 +1,53 @@
+services:
+  frigate:
+    container_name: frigate
+    image: ghcr.io/blakeblackshear/frigate:0.15.1
+    privileged: true
+    restart: unless-stopped
+    shm_size: "256mb"
+    devices:
+      - /dev/apex_0
+    volumes:
+      - /etc/localtime:/etc/localtime
+      - /home/<HOME_USER>/frigate/config.yml:/config/config.yml
+      - /home/<HOME_USER>/frigate/storage:/media/frigate
+    environment:
+      - FRIGATE_RTSP_PASSWORD=8459
+    ports:
+      - "5000:5000"
+      - "8554:8554"
+      - "8555:8555/tcp"
+      - "8555:8555/udp"
+
+  plex:
+    container_name: plex
+    image: lscr.io/linuxserver/plex
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+      - TZ=Asia/Kolkata
+    volumes:
+      - /home/<HOME_USER>/plex/config:/config
+      - /home/<HOME_USER>/downloads:/media
+
+  transmission:
+    container_name: transmission
+    image: lscr.io/linuxserver/transmission
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+      - "51413:51413"
+      - "51413:51413/udp"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Kolkata
+      - USER=<HOME_USER>
+      - PASS=8459
+    volumes:
+      - /home/<HOME_USER>/transmission/config:/config
+      - /home/<HOME_USER>/downloads:/downloads
+      - /home/<HOME_USER>/watch:/watch
