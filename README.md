@@ -40,7 +40,9 @@ This system runs on a **12-year-old Lenovo S20-30 (59-436662) 11.6-inch laptop**
 
 Other services on this same server:
 - Plex Media Server
+- Jellyfin
 - Samba (NAS/SMB shares)
+- Transmission
 
 ### Build Video (WiFi Card → Coral TPU)
 
