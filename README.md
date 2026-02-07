@@ -256,13 +256,7 @@ Notifications update by `event_id` so HA shows a single alert that gets updated.
 
 ## Documentation
 
-Start here:
-
-- `docs/SECURITY-AI-SYSTEM-COMPLETE.md` — complete system docs
-- `docs/FRIGATE-OPENCLAW-BRIDGE.md` — bridge behavior + troubleshooting
-- `docs/HOME-ASSISTANT-SETUP.md` — HA MQTT + automation
-- `docs/OPENCLAW-API-KEYS.md` — OpenAI/Anthropic API keys + model selection
-- `docs/OpenClaw-and-Frigate.md` — original planning notes
+See **Docs Map** above for the authoritative list of documentation.
 
 ---
 
