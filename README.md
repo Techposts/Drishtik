@@ -42,11 +42,11 @@ Other services on this same server:
 - Plex Media Server
 - Samba (NAS/SMB shares)
 
-### Build Video (Placeholder)
+### Build Video (WiFi Card → Coral TPU)
 
-```
-https://www.youtube.com/watch?v=ePSMDSl6QvM
-```
+[![Coral TPU Half Mini PCIe install video](https://img.youtube.com/vi/ePSMDSl6QvM/0.jpg)](https://www.youtube.com/watch?v=ePSMDSl6QvM)
+
+Video shows replacing the Half Mini PCIe WiFi card with a Coral TPU.
 
 Despite the old hardware, the TPU handles detection and GPT-4o-mini handles vision analysis reliably.
 
