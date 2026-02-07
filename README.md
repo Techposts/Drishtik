@@ -67,6 +67,29 @@ Despite the old hardware, the TPU handles detection and GPT-4o-mini handles visi
 
 ---
 
+## High-Level Data Flow
+
+```
+IP Cameras (RTSP)
+  │
+  ▼
+Frigate NVR (person detection via Coral TPU)
+  │  MQTT: frigate/events
+  ▼
+Bridge Script (snapshot download + staging)
+  │  HTTP: /hooks/agent
+  ▼
+OpenClaw Gateway (GPT-4o-mini vision)
+  │
+  ├── WhatsApp (image + analysis)
+  │
+  └── MQTT: openclaw/frigate/analysis
+         ├── Home Assistant (pending → final)
+         └── Alexa TTS (medium/high risk)
+```
+
+---
+
 ## Repository Layout
 
 ```
