@@ -8,6 +8,22 @@ It includes detailed documentation, install scripts, and example config files.
 
 ---
 
+## Docs Map
+
+1. `docs/SECURITY-AI-SYSTEM-COMPLETE.md` — full architecture, hardware, flow, troubleshooting
+2. `docs/FRIGATE-OPENCLAW-BRIDGE.md` — bridge logic + MQTT payloads
+3. `docs/HOME-ASSISTANT-SETUP.md` — MQTT entities + automations in HA
+4. `docs/OPENCLAW-API-KEYS.md` — OpenAI/Anthropic keys + model setup
+5. `docs/OpenClaw-and-Frigate.md` — redacted planning summary
+
+## Actions
+
+1. OpenClaw install: `scripts/openclaw/install-openclaw.sh`
+2. Pipeline install: `scripts/install.sh`
+3. HA automations: `config/ha-frigate-ai-automation.yaml`
+
+---
+
 ## Hardware
 
 ### Reference Build (My System)
