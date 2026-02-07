@@ -1,69 +1,43 @@
-# Frigate → OpenClaw AI Security System
+# Drishtik — AI-Powered Security Camera System
 
-This repo contains the full, working setup for an AI-powered security camera pipeline:
+> Frigate (person detection) → Bridge → OpenClaw (GPT-4o-mini vision) → WhatsApp + MQTT → Home Assistant + Alexa
 
-Frigate (person detection) → Bridge → OpenClaw (GPT-4o-mini vision) → WhatsApp + MQTT → Home Assistant + Alexa
-
-It includes detailed documentation, install scripts, and example config files.
+Turn standard IP cameras into an AI security brain. Every person detection is analyzed by a vision AI model that describes who is there, what they're doing, and the threat level — then delivers that analysis to your phone, smart speakers, and home dashboard.
 
 ---
 
-## Docs Map
+## Table of Contents
 
-1. [SECURITY-AI-SYSTEM-COMPLETE](docs/SECURITY-AI-SYSTEM-COMPLETE.md) — full architecture, hardware, flow, troubleshooting
-2. [FRIGATE-OPENCLAW-BRIDGE](docs/FRIGATE-OPENCLAW-BRIDGE.md) — bridge logic + MQTT payloads
-3. [HOME-ASSISTANT-SETUP](docs/HOME-ASSISTANT-SETUP.md) — MQTT entities + automations in HA
-4. [OPENCLAW-API-KEYS](docs/OPENCLAW-API-KEYS.md) — OpenAI/Anthropic keys + model setup
-5. [OpenClaw-And-Frigate](docs/OpenClaw-and-Frigate.md) — redacted planning summary
-
-## Actions
-
-1. OpenClaw install: [scripts/openclaw/install-openclaw.sh](scripts/openclaw/install-openclaw.sh)
-2. Pipeline install: [scripts/install.sh](scripts/install.sh)
-3. HA automations: [config/ha-frigate-ai-automation.yaml](config/ha-frigate-ai-automation.yaml)
-
----
-
-## Hardware
-
-### Reference Build (My System)
-
-This system runs on a **12-year-old Lenovo S20-30 (59-436662) 11.6-inch laptop** with:
-
-- **Google Coral TPU (Half Mini PCIe)** installed by **replacing the WiFi card**
-- **TP-Link USB 3.0 to Gigabit Ethernet** for network access
-- **1TB Samsung EVO SSD** replacing the hard drive
-- **RAM upgraded from 2GB to 8GB DDR3**
-- Debian 12 (Bookworm)
-- Runs **Frigate** + **OpenClaw** on the same box
-- AI vision analysis handled by **OpenAI GPT-4o-mini**
-
-Other services on this same server:
-- Plex Media Server
-- Jellyfin
-- Samba (NAS/SMB shares)
-- Transmission
-
-### Build Video (WiFi Card → Coral TPU)
-
-[![Coral TPU Half Mini PCIe install video](https://img.youtube.com/vi/ePSMDSl6QvM/0.jpg)](https://www.youtube.com/watch?v=ePSMDSl6QvM)
-
-Video shows replacing the Half Mini PCIe WiFi card with a Coral TPU.
-
-Despite the old hardware, the TPU handles detection and GPT-4o-mini handles vision analysis reliably.
+- [What It Does](#what-it-does)
+- [High-Level Data Flow](#high-level-data-flow)
+- [Hardware](#hardware)
+- [System Requirements](#system-requirements)
+- [Setup Guide](#setup-guide)
+  - [Step 1: Install Base System](#step-1-install-base-system)
+  - [Step 2: Install OpenClaw](#step-2-install-openclaw)
+  - [Step 3: Configure API Keys](#step-3-configure-api-keys)
+  - [Step 4: Install Frigate](#step-4-install-frigate)
+  - [Step 5: Run Prerequisites Check](#step-5-run-prerequisites-check)
+  - [Step 6: Run the Pipeline Installer](#step-6-run-the-pipeline-installer)
+  - [Step 7: Configure Home Assistant](#step-7-configure-home-assistant)
+  - [Step 8: Enable Auto-Start](#step-8-enable-auto-start)
+  - [Step 9: Test End-to-End](#step-9-test-end-to-end)
+- [Implementation Details](#implementation-details)
+- [Repository Layout](#repository-layout)
+- [Documentation](#documentation)
+- [Sensitive Files](#sensitive-files)
 
 ---
 
 ## What It Does
 
-- Detects **person** events in Frigate (MQTT)
-- Downloads the event snapshot
-- **Stages** the snapshot into OpenClaw workspace for WhatsApp media
-- Sends the snapshot to OpenClaw via webhook
-- OpenClaw runs GPT-4o-mini vision analysis
-- WhatsApp receives **image + analysis**
-- Home Assistant receives **pending** immediately, then **final analysis** update
-- Alexa announces high-risk events
+- Detects **person** events in Frigate via Coral TPU (MQTT)
+- Downloads the event snapshot from Frigate API
+- **Stages** the snapshot into OpenClaw workspace for WhatsApp media delivery
+- Sends the snapshot to OpenClaw via webhook for **GPT-4o-mini vision** analysis
+- WhatsApp receives **image + analysis** text
+- Home Assistant receives **pending** immediately, then **final analysis** update via MQTT
+- Alexa announces **medium/high risk** events on Echo devices
 
 ---
 
@@ -76,91 +50,86 @@ IP Cameras (RTSP)
 Frigate NVR (person detection via Coral TPU)
   │  MQTT: frigate/events
   ▼
-Bridge Script (snapshot download + staging)
-  │  HTTP: /hooks/agent
+Bridge Script (snapshot download + workspace staging)
+  │  HTTP POST: /hooks/agent
   ▼
-OpenClaw Gateway (GPT-4o-mini vision)
+OpenClaw Gateway (GPT-4o-mini vision analysis)
   │
-  ├── WhatsApp (image + analysis)
+  ├── WhatsApp (snapshot image + analysis text)
   │
   └── MQTT: openclaw/frigate/analysis
-         ├── Home Assistant (pending → final)
-         └── Alexa TTS (medium/high risk)
+         ├── Home Assistant (pending → final update)
+         └── Alexa TTS (medium/high risk, daytime only)
 ```
 
 ---
 
-## Repository Layout
+## Hardware
 
-```
-github/
-├── README.md
-├── SECURITY.md
-├── CHANGELOG.md
-├── docs/
-│   ├── FRIGATE-OPENCLAW-BRIDGE.md
-│   ├── HOME-ASSISTANT-SETUP.md
-│   ├── SECURITY-AI-SYSTEM-COMPLETE.md
-│   ├── OPENCLAW-API-KEYS.md
-│   └── OpenClaw-and-Frigate.md
-├── scripts/
-│   ├── install.sh
-│   ├── setup-frigate-ai.sh
-│   ├── setup-frigate-ai-prereqs.sh
-│   └── frigate-openclaw-bridge.py
-│   └── openclaw/
-│       ├── README.md
-│       ├── install-openclaw.sh
-│       └── setup-https-proxy.sh
-└── config/
-    ├── frigate-config.yml
-    ├── docker-compose.yml
-    └── ha-frigate-ai-automation.yaml
-    └── openclaw.json.example
-```
+### Reference Build
+
+This system runs on a **12-year-old Lenovo S20-30 (59-436662) 11.6-inch laptop** with:
+
+- **Google Coral TPU (Half Mini PCIe)** installed by **replacing the WiFi card**
+- **TP-Link USB 3.0 to Gigabit Ethernet** for network access
+- **1TB Samsung EVO SSD** replacing the hard drive
+- **RAM upgraded from 2GB to 8GB DDR3**
+- Debian 12 (Bookworm)
+- Runs **Frigate** + **OpenClaw** on the same box
+- AI vision analysis handled by **OpenAI GPT-4o-mini**
+
+Other services on this same server: Plex, Jellyfin, Samba, Transmission.
+
+### Build Video (WiFi Card → Coral TPU)
+
+[![Coral TPU Half Mini PCIe install video](https://img.youtube.com/vi/ePSMDSl6QvM/0.jpg)](https://www.youtube.com/watch?v=ePSMDSl6QvM)
+
+Video shows replacing the Half Mini PCIe WiFi card with a Coral TPU. Despite the old hardware, the TPU handles detection and GPT-4o-mini handles vision analysis reliably.
 
 ---
 
-## Quick Start (New System)
+## System Requirements
 
-1. **Run prerequisite checks**
+**Minimum** (works, but tight):
+- Dual-core x86_64 CPU
+- 4 GB RAM
+- SSD recommended
+- Coral TPU (USB or PCIe)
+
+**Recommended** (smoother):
+- Dual-core or better CPU
+- 8 GB RAM
+- SSD
+- Coral TPU (Half Mini PCIe or USB)
+- Wired Ethernet (USB 3.0 Gigabit adapter ok)
+
+**Software:**
+- Debian 12+ / Ubuntu 22.04+ / Raspberry Pi OS (Bookworm)
+- Docker
+- Python 3.10+
+- Node.js 20+
+
+---
+
+## Setup Guide
+
+### Step 1: Install Base System
+
+Install Debian (or Ubuntu/Raspberry Pi OS) with Docker and Python 3.10+.
 
 ```bash
-bash scripts/setup-frigate-ai-prereqs.sh
+sudo apt update && sudo apt install -y docker.io python3 python3-venv python3-full curl
 ```
 
-2. **Run the interactive installer**
+### Step 2: Install OpenClaw
 
-```bash
-bash scripts/install.sh
-```
-
-3. **Apply Home Assistant automation**
-
-- Use `config/ha-frigate-ai-automation.yaml`
-- Or see `docs/HOME-ASSISTANT-SETUP.md`
-
-4. **Test**
-
-- Walk in front of a camera
-- WhatsApp should receive **image + analysis**
-- HA should show **pending**, then update with the final analysis
-
-### What Happens During AI Analysis
-
-When a person is detected, the bridge pulls a snapshot from Frigate and sends it to **OpenClaw**, which runs **GPT‑4o‑mini vision**. OpenClaw returns a short, structured security assessment, and the bridge publishes it to MQTT. That is why HA first shows **pending**, then updates the same alert when the final analysis arrives. WhatsApp receives the snapshot **plus** the analysis text.
-
-To make this work, make sure OpenClaw is installed, the gateway is running, and your API key/model are configured in the **OpenClaw + API Keys** section below.
-
----
-
-## OpenClaw Install (Recommended)
-
-Use the bundled OpenClaw installer if this is a new system:
+Use the bundled interactive installer:
 
 ```bash
 bash scripts/openclaw/install-openclaw.sh
 ```
+
+This handles Node.js, Chromium, OpenClaw, gateway config, messaging channels, and systemd service.
 
 Optional HTTPS reverse proxy (self-signed cert, LAN access):
 
@@ -168,131 +137,206 @@ Optional HTTPS reverse proxy (self-signed cert, LAN access):
 sudo bash scripts/openclaw/setup-https-proxy.sh
 ```
 
-**Security note:** real OpenClaw configs and tokens are not included in this repo.
-Use `config/openclaw.json.example` as a template.
+See [scripts/openclaw/README.md](scripts/openclaw/README.md) for the full OpenClaw reference guide.
 
----
+### Step 3: Configure API Keys
 
-## API Keys And Models
-
-OpenClaw supports multiple providers. For this pipeline, **OpenAI GPT-4o-mini** is recommended for vision.
-
-### OpenAI (Recommended)
-
-1. Create an API key in the OpenAI console (API Keys section).
-2. Paste it into OpenClaw:
+**OpenAI GPT-4o-mini** is recommended for vision analysis in this pipeline.
 
 ```bash
+# Set the API key
 openclaw models auth paste-token --provider openai
-```
 
-3. Set the model:
-
-```bash
+# Set the model
 openclaw models set openai/gpt-4o-mini
 ```
 
-### Anthropic (Optional)
-
-1. Create an API key in the Anthropic console (API Keys section).
-2. Paste it into OpenClaw:
+Anthropic is optional (for non-vision tasks):
 
 ```bash
 openclaw models auth paste-token --provider anthropic
+openclaw models set anthropic/claude-3-5-haiku-latest
 ```
 
-3. Suggested models:
+See [docs/OPENCLAW-API-KEYS.md](docs/OPENCLAW-API-KEYS.md) for detailed steps.
+
+### Step 4: Install Frigate
+
+Install Frigate with Docker. Use `config/docker-compose.yml` as a starting point and `config/frigate-config.yml` as a reference config.
 
 ```bash
-openclaw models set anthropic/claude-3-5-haiku-latest
-openclaw models set anthropic/claude-sonnet-4-20250514
+docker compose up -d frigate
 ```
 
+Ensure:
+- Coral TPU is detected: `ls /dev/apex_0` (PCIe) or `lsusb | grep -i coral` (USB)
+- Snapshots are enabled in `config.yml`
+- MQTT is configured to your broker
+
+### Step 5: Run Prerequisites Check
+
+This script verifies all system requirements without making changes:
+
+```bash
+bash scripts/setup-frigate-ai-prereqs.sh
+```
+
+It checks: Python, Docker, Frigate container, Frigate API, systemd, OpenClaw, gateway, workspace paths, Coral TPU.
+
+Fix any warnings before proceeding.
+
+### Step 6: Run the Pipeline Installer
+
+Run the combined installer (prereqs + pipeline setup):
+
+```bash
+bash scripts/install.sh
+```
+
+Or run the pipeline setup directly:
+
+```bash
+bash scripts/setup-frigate-ai.sh
+```
+
+The installer will:
+- Ask for MQTT, Frigate, OpenClaw, and notification settings
+- Enable Frigate snapshots
+- Add webhook hooks to OpenClaw config
+- Create the bridge script with your settings
+- Create the OpenClaw Frigate skill
+- Create a systemd service for the bridge
+- Generate Home Assistant YAML files
+
+### Step 7: Configure Home Assistant
+
+The installer generates two HA YAML files. Apply them to your Home Assistant:
+
+1. **MQTT Sensors** — copy `ha-mqtt-sensors.yaml` contents into your HA `configuration.yaml` under the `mqtt:` section
+
+2. **Automations** — copy `ha-frigate-ai-automation.yaml` contents into your HA `automations.yaml`
+
+3. **Create Helpers** — in HA, go to Settings → Devices & Services → Helpers and create:
+   - `input_datetime.frigate_ai_last_alexa` (Date and Time)
+   - `input_datetime.frigate_ai_last_echo_show` (Date and Time)
+
+4. **Restart HA** or reload YAML configs from Developer Tools
+
+See [docs/HOME-ASSISTANT-SETUP.md](docs/HOME-ASSISTANT-SETUP.md) for details.
+
+### Step 8: Enable Auto-Start
+
+Enable lingering so user-level services start at boot:
+
+```bash
+sudo loginctl enable-linger $(whoami)
+```
+
+Verify services are running:
+
+```bash
+systemctl --user status frigate-openclaw-bridge.service
+systemctl --user status openclaw-gateway.service
+```
+
+### Step 9: Test End-to-End
+
+1. Walk in front of a camera
+2. Watch the bridge logs: `journalctl --user -u frigate-openclaw-bridge.service -f`
+3. Verify: WhatsApp receives **image + analysis**
+4. Verify: HA shows **pending**, then updates with the final analysis
+5. Verify: Alexa announces medium/high risk events (daytime only)
+
+### What Happens During AI Analysis
+
+When a person is detected, the bridge pulls a snapshot from Frigate and sends it to **OpenClaw**, which runs **GPT-4o-mini vision**. OpenClaw returns a short, structured security assessment, and the bridge publishes it to MQTT. That is why HA first shows **pending**, then updates the same alert when the final analysis arrives. WhatsApp receives the snapshot **plus** the analysis text.
+
 ---
 
-## New System Checklist
-
-1. Install Debian + Docker + Python 3.10+.
-2. Install OpenClaw and complete WhatsApp login.
-3. Ensure OpenClaw gateway is running on `:18789`.
-4. Ensure OpenClaw workspace exists: `~/.openclaw/workspace`.
-5. Create OpenClaw media path: `~/.openclaw/workspace/ai-snapshots`.
-6. Ensure sessions index exists: `~/.openclaw/agents/main/sessions/sessions.json`.
-7. Install Frigate and enable snapshots in `config.yml`.
-8. Run `scripts/setup-frigate-ai-prereqs.sh` and fix any warnings.
-9. Run `scripts/install.sh` and follow prompts.
-10. Apply Home Assistant automation YAML.
-11. Enable lingering so services start at boot: `sudo loginctl enable-linger <user>`.
-12. Test end-to-end by walking in front of a camera.
-
----
-
-## Recommended System Configuration
-
-Minimum (works, but tight):
-- Dual-core x86_64 CPU
-- 4 GB RAM
-- SSD recommended
-- Coral TPU (USB or PCIe)
-
-Recommended (smoother):
-- Dual-core or better CPU
-- 8 GB RAM
-- SSD
-- Coral TPU (Half Mini PCIe or USB)
-- Wired Ethernet (USB 3.0 Gigabit adapter ok)
-
----
-
-## Setup Sequence (Clean Install)
-
-1. Install Debian + Docker + Python 3.10+.
-2. Install OpenClaw using `scripts/openclaw/install-openclaw.sh`.
-3. Add OpenAI API key and set model to `openai/gpt-4o-mini`.
-4. Configure WhatsApp/Telegram/Discord if desired (I use WhatsApp).
-5. Install Frigate and confirm snapshots are enabled.
-6. Ensure Coral TPU works (USB or PCIe).
-7. Run `scripts/setup-frigate-ai-prereqs.sh` and fix warnings.
-8. Run `scripts/install.sh` to wire the pipeline end-to-end.
-9. Apply Home Assistant automation YAML.
-10. Test end-to-end by walking in front of a camera.
-
----
-
-## Sensitive Files
-
-Any real `openclaw.json`, auth profiles, session logs, or tokens are **excluded**.
-If you need the original transcript, it was moved to `github_sensitive/` on the server.
-
----
-
-## Important Implementation Details
+## Implementation Details
 
 ### WhatsApp Media Path
-OpenClaw blocks absolute paths in `MEDIA:`. The bridge stages snapshots into OpenClaw workspace and uses:
+
+OpenClaw blocks absolute paths in `MEDIA:`. The bridge stages snapshots into the OpenClaw workspace and uses a relative path:
 
 ```
 MEDIA:./.openclaw/workspace/ai-snapshots/<event_id>.jpg
 ```
 
-### Home Assistant Updates
-Each event publishes twice to MQTT:
+### Two-Phase MQTT Updates
 
-- **Immediate** pending message
-- **Final** GPT-4o-mini analysis
+Each event publishes twice to `openclaw/frigate/analysis`:
 
-Notifications update by `event_id` so HA shows a single alert that gets updated.
+1. **Immediate** — pending message (so HA knows a detection happened)
+2. **Final** — GPT-4o-mini analysis with risk level, TTS text, and event metadata
+
+Notifications update by `event_id` so HA shows a single alert that gets updated in place.
+
+### MQTT Payload Fields
+
+| Field | Description |
+|-------|-------------|
+| `camera` | Camera name (e.g. `GarageCam`) |
+| `label` | Detection label (`person`) |
+| `analysis` | Full GPT-4o-mini analysis text |
+| `risk` | Threat level: `low`, `medium`, or `high` |
+| `tts` | Short spoken version for Alexa |
+| `timestamp` | ISO 8601 UTC timestamp |
+| `event_id` | Frigate event ID |
+| `snapshot_path` | Local path to saved snapshot |
+
+### Analysis-Only Mode
+
+The bridge supports an analysis-only mode that generates AI analysis and publishes to MQTT without sending WhatsApp/Telegram messages. Useful for HA-only setups.
+
+---
+
+## Repository Layout
+
+```
+├── README.md                          # This file
+├── SECURITY.md                        # Sensitive files policy
+├── CHANGELOG.md                       # Version history
+├── docs/
+│   ├── SECURITY-AI-SYSTEM-COMPLETE.md # Full architecture & troubleshooting
+│   ├── FRIGATE-OPENCLAW-BRIDGE.md     # Bridge logic & MQTT payloads
+│   ├── HOME-ASSISTANT-SETUP.md        # HA MQTT entities & automations
+│   ├── OPENCLAW-API-KEYS.md           # API key setup (OpenAI/Anthropic)
+│   └── OpenClaw-and-Frigate.md        # Redacted planning summary
+├── scripts/
+│   ├── install.sh                     # Wrapper: prereqs + pipeline setup
+│   ├── setup-frigate-ai.sh            # Interactive pipeline installer
+│   ├── setup-frigate-ai-prereqs.sh    # System requirements checker
+│   ├── frigate-openclaw-bridge.py     # Bridge script (template)
+│   └── openclaw/
+│       ├── README.md                  # OpenClaw reference guide
+│       ├── install-openclaw.sh        # OpenClaw interactive installer
+│       └── setup-https-proxy.sh       # nginx HTTPS reverse proxy
+└── config/
+    ├── frigate-config.yml             # Frigate config (redacted)
+    ├── docker-compose.yml             # Docker services (Frigate + Plex + Transmission)
+    ├── ha-frigate-ai-automation.yaml  # HA unified automation
+    └── openclaw.json.example          # OpenClaw config template
+```
 
 ---
 
 ## Documentation
 
-See **Docs Map** above for the authoritative list of documentation.
+| Document | Description |
+|----------|-------------|
+| [SECURITY-AI-SYSTEM-COMPLETE](docs/SECURITY-AI-SYSTEM-COMPLETE.md) | Full architecture, hardware, data flow, component details, troubleshooting |
+| [FRIGATE-OPENCLAW-BRIDGE](docs/FRIGATE-OPENCLAW-BRIDGE.md) | Bridge script logic, MQTT payloads, workspace staging |
+| [HOME-ASSISTANT-SETUP](docs/HOME-ASSISTANT-SETUP.md) | MQTT sensors, automations, Alexa, Lovelace cards |
+| [OPENCLAW-API-KEYS](docs/OPENCLAW-API-KEYS.md) | OpenAI/Anthropic API key creation and model setup |
+| [OpenClaw-and-Frigate](docs/OpenClaw-and-Frigate.md) | Redacted planning summary |
+| [OpenClaw Reference](scripts/openclaw/README.md) | OpenClaw CLI commands, gateway, channels, diagnostics |
+| [Roadmap Plan](plan/README.md) | Phase-by-phase implementation plan (start with Phase 1) |
 
 ---
 
-## Notes
+## Sensitive Files
 
-- OpenClaw uses **GPT-4o-mini** for vision analysis.
-- The system is optimized to keep latency low on older hardware.
-- All services run as **user-level systemd services**.
+Any real `openclaw.json`, auth profiles, session logs, or tokens are **excluded** from this repo. See [SECURITY.md](SECURITY.md) for the full exclusion policy.
+
+Use `config/openclaw.json.example` as a template for your own config.
