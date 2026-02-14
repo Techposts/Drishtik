@@ -457,7 +457,8 @@ def append_event_history(camera: str, event_id: str, decision: dict) -> None:
 # Pillar 2 — Rule-based severity scoring (supplements AI decision)
 # ---------------------------------------------------------------------------
 def score_severity(ai_decision: dict, policy: dict) -> str:
-    """Apply simple deterministic rules to adjust AI risk assessment.
+    """Apply deterministic rules to adjust AI risk assessment.
+    Rules only UPGRADE risk, never downgrade unless known face.
     Returns: low / medium / high / critical."""
     score = 0
     ai_risk = str(ai_decision.get("risk", {}) if not isinstance(ai_decision.get("risk"), dict) else ai_decision.get("risk", {}).get("level", "low")).lower()
@@ -467,38 +468,39 @@ def score_severity(ai_decision: dict, policy: dict) -> str:
     known_faces = bool(policy.get("known_faces_present", False))
     zone = str(policy.get("camera_zone", "entry")).lower()
     recent_count = int(policy.get("recent_events_count", 0))
+    behavior = str(ai_decision.get("behavior", "")).lower()
 
-    # Unknown person = base risk
-    if "unknown" in ai_type or ai_type == "other":
-        score += 2
-    # After hours (evening/night)
+    # Start from AI risk as baseline (trust the AI, rules only adjust)
+    ai_score = {"low": 0, "medium": 3, "high": 5, "critical": 7}.get(ai_risk, 0)
+    score = ai_score
+
+    # After hours (evening/night) — significant risk multiplier
     if time_of_day in ("evening", "night"):
         score += 2
-    # Restricted/sensitive zones
-    if any(z in zone for z in ("terrace", "garage", "entry", "door")):
-        score += 1
-    # Away mode = higher risk
+    # Away mode = highest contextual risk
     if home_mode == "away":
         score += 3
     elif home_mode == "sleep":
-        score += 2
-    # Suspicious behavior keywords from AI
-    behavior = str(ai_decision.get("behavior", "")).lower()
-    if any(w in behavior for w in ("suspicious", "lurking", "trying", "forcing", "climbing", "breaking", "running")):
+        score += 1
+    # Highly suspicious behavior keywords
+    if any(w in behavior for w in ("suspicious", "lurking", "forcing", "climbing", "breaking", "running", "prying")):
         score += 3
-    elif any(w in behavior for w in ("reaching", "looking around", "crouching", "hiding")):
+    elif any(w in behavior for w in ("crouching", "hiding", "concealing", "tampering")):
         score += 2
-    # Loitering
+    # Loitering is concerning
     if "loitering" in ai_type:
         score += 2
-    # Known face = reduce
+    # Known face = strong reduction
     if known_faces or "known" in ai_type:
-        score -= 3
-    # Delivery = reduce
+        score -= 4
+    # Delivery = mild reduction
     if "delivery" in ai_type:
+        score -= 2
+    # Routine behavior words = mild reduction (walking, standing, normal)
+    if any(w in behavior for w in ("walking", "standing", "routine", "normal", "passing")):
         score -= 1
     # Frequent recent events = something ongoing
-    if recent_count >= 3:
+    if recent_count >= 5:
         score += 1
 
     # Map score to risk level
@@ -586,7 +588,7 @@ def send_to_openclaw(camera: str, event_id: str, policy: dict | None = None,
     a cleaned message (without machine JSON)."""
     # OpenClaw only allows MEDIA:./relative paths for security
     # MEDIA lines must be relative and cannot use ".." per OpenClaw security rules.
-    # The gateway runs with HOME=/home/<HOME_USER>, so use a workspace-relative path.
+    # The gateway runs with HOME=/home/techposts, so use a workspace-relative path.
     openclaw_rel_media = f"./frigate/storage/ai-snapshots/{event_id}.jpg"
     openclaw_abs_media = str(OPENCLAW_MEDIA_DIR / f"{event_id}.jpg")
     if policy is None:
