@@ -36,7 +36,7 @@ Turn standard IP cameras into an AI security brain. Every person detection is an
 Real alert with snapshot, structured analysis, and video clip attached:
 
 <p align="center">
-  <img src="images/whatsapp-alert.png" alt="WhatsApp Security Alert with snapshot and clip" width="400">
+  <img src="images/whatsapp-alert.png" alt="WhatsApp Security Alert" width="380">
   <br>
   <em>Structured WhatsApp alert — snapshot, AI analysis, severity, behavior, risk, and 15s video clip</em>
 </p>
@@ -116,73 +116,83 @@ A built-in web UI for managing all settings without SSH or config file editing.
 
 ### Overview & Diagnostics
 
-<p align="center">
-  <img src="images/overview.png" alt="Control Panel Overview" width="420">
-  &nbsp;&nbsp;
-  <img src="images/diagnostics.png" alt="Diagnostics & Policy Simulator" width="420">
-</p>
-<p align="center">
-  <em>Left: Overview — system health, synthetic events, Frigate config editor, operator runbook</em>
-  <br>
-  <em>Right: Diagnostics — test suite, policy simulator with dry-run</em>
-</p>
+<table>
+<tr>
+<td width="50%">
+<img src="images/overview.png" alt="Control Panel Overview" width="100%">
+<p align="center"><em>Overview — system health, synthetic events, Frigate config editor</em></p>
+</td>
+<td width="50%">
+<img src="images/diagnostics.png" alt="Diagnostics & Policy Simulator" width="100%">
+<p align="center"><em>Diagnostics — test suite, policy simulator with dry-run</em></p>
+</td>
+</tr>
+</table>
 
 ### Features & Home Assistant
 
-<p align="center">
-  <img src="images/features.png" alt="Feature Switches" width="420">
-  &nbsp;&nbsp;
-  <img src="images/home-assistant.png" alt="Home Assistant Settings" width="420">
-</p>
-<p align="center">
-  <em>Left: Feature toggles — Smart Policy, Event Memory, Confirmation Gate, Reports</em>
-  <br>
-  <em>Right: Home Assistant — WhatsApp recipients, HA connection, known faces, zone lights</em>
-</p>
+<table>
+<tr>
+<td width="50%">
+<img src="images/features.png" alt="Feature Switches" width="100%">
+<p align="center"><em>Feature toggles — Policy, Memory, Confirmation Gate, Reports</em></p>
+</td>
+<td width="50%">
+<img src="images/home-assistant.png" alt="Home Assistant Settings" width="100%">
+<p align="center"><em>HA settings — WhatsApp, known faces, zone lights, home mode</em></p>
+</td>
+</tr>
+</table>
 
 ### AI Engine & Camera NVR
 
-<p align="center">
-  <img src="images/openclaw-ai-agent.png" alt="OpenClaw AI Agent Settings" width="420">
-  &nbsp;&nbsp;
-  <img src="images/frigate-nvr.png" alt="Frigate NVR Config" width="420">
-</p>
-<p align="center">
-  <em>Left: OpenClaw AI — endpoints, model selection, WhatsApp channel policy, gateway controls</em>
-  <br>
-  <em>Right: Frigate NVR — config.yml editor, validation, backups, restart controls</em>
-</p>
+<table>
+<tr>
+<td width="50%">
+<img src="images/openclaw-ai-agent.png" alt="OpenClaw AI Agent Settings" width="100%">
+<p align="center"><em>OpenClaw AI — endpoints, model, WhatsApp policy, gateway</em></p>
+</td>
+<td width="50%">
+<img src="images/frigate-nvr.png" alt="Frigate NVR Config" width="100%">
+<p align="center"><em>Frigate NVR — config editor, validation, backups, restart</em></p>
+</td>
+</tr>
+</table>
 
 ### Summaries & Performance
 
-<p align="center">
-  <img src="images/summaries.png" alt="Summaries & Reports" width="420">
-  &nbsp;&nbsp;
-  <img src="images/performance.png" alt="Performance Metrics" width="420">
-</p>
-<p align="center">
-  <em>Left: Daily/weekly reports — event counts, risk distribution, action breakdown</em>
-  <br>
-  <em>Right: Performance metrics — event rates, success rates, service health</em>
-</p>
+<table>
+<tr>
+<td width="50%">
+<img src="images/summaries.png" alt="Summaries & Reports" width="100%">
+<p align="center"><em>Reports — daily events, risk distribution, action breakdown</em></p>
+</td>
+<td width="50%">
+<img src="images/performance.png" alt="Performance Metrics" width="100%">
+<p align="center"><em>Performance — event rates, success rates, service health</em></p>
+</td>
+</tr>
+</table>
 
 ### Audit Trail & Admin
 
-<p align="center">
-  <img src="images/audits.png" alt="Audit Trail" width="420">
-  &nbsp;&nbsp;
-  <img src="images/admin-config.png" alt="Admin Configuration" width="420">
-</p>
-<p align="center">
-  <em>Left: Activity history — timestamped log of all config changes and actions</em>
-  <br>
-  <em>Right: Admin — user management, auth settings, audit signing, service logs</em>
-</p>
+<table>
+<tr>
+<td width="50%">
+<img src="images/audits.png" alt="Audit Trail" width="100%">
+<p align="center"><em>Activity history — timestamped config changes and actions</em></p>
+</td>
+<td width="50%">
+<img src="images/admin-config.png" alt="Admin Configuration" width="100%">
+<p align="center"><em>Admin — user management, auth, audit signing</em></p>
+</td>
+</tr>
+</table>
 
 ### Service Logs
 
 <p align="center">
-  <img src="images/service-logs.png" alt="Service Logs" width="420">
+  <img src="images/service-logs.png" alt="Service Logs" width="380">
   <br>
   <em>Live service logs viewer for bridge, OpenClaw, and Frigate</em>
 </p>
