@@ -1,4 +1,4 @@
-# Sensitive files
+# Sensitive files — NEVER commit real tokens or credentials
 **/.openclaw/**
 **/openclaw.json
 **/auth-profiles.json
@@ -9,6 +9,7 @@
 **/*.crt
 **/.env
 **/secrets.*
+**/bridge-runtime-config.json
 
 # Logs
 **/*.log
@@ -16,3 +17,14 @@
 # OS files
 .DS_Store
 ._*
+**/__pycache__/
+*.pyc
+
+# Virtual environments
+bridge-venv/
+
+# Storage (snapshots, clips, recordings)
+storage/
+
+# Backup files
+*.bak*

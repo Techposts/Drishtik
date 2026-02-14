@@ -41,9 +41,9 @@ ask_yn() {
     read -r input
     input="${input:-$default}"
     if [[ "$input" =~ ^[Yy] ]]; then
-        eval "$varname=yes"
+        printf -v "$varname" '%s' "yes"
     else
-        eval "$varname=no"
+        printf -v "$varname" '%s' "no"
     fi
 }
 
@@ -249,11 +249,18 @@ else
 fi
 
 # ── Coral TPU hint ──
-if ls /dev/apex_0 &>/dev/null; then
-    success "Coral TPU detected at /dev/apex_0"
+CORAL_FOUND=no
+if [[ -e /dev/apex_0 ]]; then
+    success "Coral TPU detected at /dev/apex_0 (PCIe)"
+    CORAL_FOUND=yes
     ((PREFLIGHT_PASS++))
-else
-    warn "Coral TPU not detected at /dev/apex_0"
+elif lsusb 2>/dev/null | grep -qi "global unichip\|google.*coral\|1a6e:089a\|18d1:9302"; then
+    success "Coral TPU detected via USB"
+    CORAL_FOUND=yes
+    ((PREFLIGHT_PASS++))
+fi
+if [[ "$CORAL_FOUND" == "no" ]]; then
+    warn "Coral TPU not detected"
     echo -e "       ${YELLOW}Check:${NC} lsusb | grep -i coral  (USB) or lspci | grep -i coral (PCIe)"
     ((PREFLIGHT_WARN++))
 fi

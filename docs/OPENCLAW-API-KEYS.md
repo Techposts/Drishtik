@@ -12,7 +12,7 @@ It uses **OpenAI GPT-4o-mini** for vision, with **Anthropic** as an optional pro
 1. Open the OpenAI Help article (it links to the API Keys page):
 
 ```
-https://help.openai.com/en/articles/4936850-where-do-i-find-my-secret-api-key_
+https://help.openai.com/en/articles/4936850-where-do-i-find-my-secret-api-key
 ```
 
 2. Click **API Keys**.

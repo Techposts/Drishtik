@@ -105,7 +105,7 @@ openclaw channels add --channel slack --bot-token <SLACK_BOT_TOKEN> --app-token 
 
 Bridge config file:
 ```
-/home/techposts/frigate/frigate-openclaw-bridge.py
+/home/<HOME_USER>/frigate/frigate-openclaw-bridge.py
 ```
 
 Important fields:

@@ -41,11 +41,11 @@ ask() {
     if [[ -n "$default" ]]; then
         echo -ne "  ${GREEN}?${NC}  ${prompt} ${YELLOW}[${default}]${NC}: "
         read -r input
-        eval "$varname=\"${input:-$default}\""
+        printf -v "$varname" '%s' "${input:-$default}"
     else
         echo -ne "  ${GREEN}?${NC}  ${prompt}: "
         read -r input
-        eval "$varname=\"$input\""
+        printf -v "$varname" '%s' "$input"
     fi
 }
 
@@ -57,12 +57,12 @@ ask_password() {
         echo -ne "  ${GREEN}?${NC}  ${prompt} ${YELLOW}[${default}]${NC}: "
         read -rs input
         echo ""
-        eval "$varname=\"${input:-$default}\""
+        printf -v "$varname" '%s' "${input:-$default}"
     else
         echo -ne "  ${GREEN}?${NC}  ${prompt}: "
         read -rs input
         echo ""
-        eval "$varname=\"$input\""
+        printf -v "$varname" '%s' "$input"
     fi
 }
 
@@ -74,9 +74,9 @@ ask_yn() {
     read -r input
     input="${input:-$default}"
     if [[ "$input" =~ ^[Yy] ]]; then
-        eval "$varname=yes"
+        printf -v "$varname" '%s' "yes"
     else
-        eval "$varname=no"
+        printf -v "$varname" '%s' "no"
     fi
 }
 

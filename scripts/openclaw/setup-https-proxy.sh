@@ -2,15 +2,55 @@
 # Setup nginx HTTPS reverse proxy for OpenClaw gateway
 # Run with: sudo bash setup-https-proxy.sh
 
-set -e
+set -euo pipefail
 
-LOCAL_IP="192.168.1.10"
-OPENCLAW_PORT="18789"
+OPENCLAW_PORT="${1:-18789}"
 SSL_DIR="/etc/nginx/ssl"
 CERT_DAYS="3650"  # 10 years for a local self-signed cert
 
+# Detect LAN IP
+detect_lan_ip() {
+    local ip=""
+    if command -v ip &>/dev/null; then
+        ip=$(ip -4 addr show 2>/dev/null \
+            | grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+' \
+            | grep -v '^127\.' \
+            | grep -E '^(192\.168\.|10\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.)' \
+            | head -1)
+    fi
+    if [[ -z "$ip" ]] && command -v hostname &>/dev/null; then
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+    echo "${ip:-127.0.0.1}"
+}
+
+LOCAL_IP=$(detect_lan_ip)
+
 echo "=== OpenClaw HTTPS Reverse Proxy Setup ==="
 echo ""
+echo "Detected LAN IP: $LOCAL_IP"
+echo "OpenClaw port:   $OPENCLAW_PORT"
+echo ""
+read -r -p "Use this IP? (or enter a different one) [$LOCAL_IP]: " USER_IP
+LOCAL_IP="${USER_IP:-$LOCAL_IP}"
+
+# Check prerequisites
+if ! command -v nginx &>/dev/null; then
+    echo "[ERROR] nginx is not installed."
+    echo "Install it with: sudo apt install nginx"
+    exit 1
+fi
+
+if ! command -v openssl &>/dev/null; then
+    echo "[ERROR] openssl is not installed."
+    echo "Install it with: sudo apt install openssl"
+    exit 1
+fi
+
+if [[ "$EUID" -ne 0 ]]; then
+    echo "[ERROR] This script must be run as root (sudo)."
+    exit 1
+fi
 
 # 1. Create SSL directory
 mkdir -p "$SSL_DIR"
@@ -29,11 +69,11 @@ chmod 644 "$SSL_DIR/openclaw.crt"
 
 # 3. Write nginx site config
 echo "[2/3] Writing nginx config ..."
-cat > /etc/nginx/sites-available/openclaw <<'NGINX'
+cat > /etc/nginx/sites-available/openclaw << NGINX
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name 192.168.1.10;
+    server_name $LOCAL_IP;
 
     ssl_certificate     /etc/nginx/ssl/openclaw.crt;
     ssl_certificate_key /etc/nginx/ssl/openclaw.key;
@@ -42,18 +82,18 @@ server {
 
     # Proxy all traffic to OpenClaw gateway
     location / {
-        proxy_pass http://127.0.0.1:18789;
+        proxy_pass http://127.0.0.1:$OPENCLAW_PORT;
         proxy_http_version 1.1;
 
         # WebSocket support
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
 
         # Pass through client info
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
 
         # Timeouts for long-lived WebSocket connections
         proxy_read_timeout 86400s;

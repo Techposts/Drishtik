@@ -12,7 +12,7 @@ services:
       - /home/<HOME_USER>/frigate/config.yml:/config/config.yml
       - /home/<HOME_USER>/frigate/storage:/media/frigate
     environment:
-      - FRIGATE_RTSP_PASSWORD=8459
+      - FRIGATE_RTSP_PASSWORD=<RTSP_PASS>
     ports:
       - "5000:5000"
       - "8554:8554"
@@ -46,7 +46,7 @@ services:
       - PGID=1000
       - TZ=Asia/Kolkata
       - USER=<HOME_USER>
-      - PASS=8459
+      - PASS=<TRANSMISSION_PASS>
     volumes:
       - /home/<HOME_USER>/transmission/config:/config
       - /home/<HOME_USER>/downloads:/downloads

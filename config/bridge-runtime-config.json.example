@@ -1,0 +1,60 @@
+{
+  "mqtt_host": "192.168.1.20",
+  "mqtt_port": 1885,
+  "mqtt_user": "<MQTT_USER>",
+  "mqtt_pass": "<MQTT_PASS>",
+  "mqtt_topic_subscribe": "frigate/events",
+  "mqtt_topic_publish": "openclaw/frigate/analysis",
+  "frigate_api": "http://localhost:5000",
+  "openclaw_analysis_webhook": "http://127.0.0.1:18789/hooks/agent",
+  "openclaw_delivery_webhook": "http://127.0.0.1:18789/hooks/agent",
+  "openclaw_token": "<HOOK_TOKEN>",
+  "openclaw_analysis_agent_name": "main",
+  "openclaw_delivery_agent_name": "main",
+  "openclaw_analysis_model": "litellm/qwen2.5vl:7b",
+  "openclaw_analysis_model_fallback": "openai/gpt-4o-mini",
+  "openclaw_analysis_webhook_fallback": "http://127.0.0.1:18789/hooks/agent",
+  "ollama_api": "http://<OLLAMA_HOST>:11434",
+  "ollama_model": "qwen2.5vl:7b",
+  "whatsapp_to": [
+    "+1234567890"
+  ],
+  "cooldown_seconds": 30,
+  "ha_url": "http://<HA_HOST>:8123",
+  "ha_token": "<HA_LONG_LIVED_TOKEN>",
+  "camera_zone_lights": {
+    "GarageCam": ["switch.garage_light"],
+    "TopStairCam": ["light.stairway"],
+    "TerraceCam": ["light.terrace"]
+  },
+  "camera_zone_lights_default": ["light.garage"],
+  "alarm_entity": "switch.security_siren",
+  "quiet_hours_start": 23,
+  "quiet_hours_end": 6,
+  "ha_home_mode_entity": "input_select.home_mode",
+  "ha_known_faces_entity": "binary_sensor.person_occupancy",
+  "exclude_known_faces": false,
+  "camera_context_notes": {
+    "GarageCam": "Ground floor garage entrance and main home entry gate. Monitors visitors, deliveries, unknown individuals near vehicles. Key concern: unauthorized entry, package theft.",
+    "TopStairCam": "Indoor stairway leading to terrace door. Monitors movement between floors. Key concern: intrusion from terrace, unusual activity on stairs at night.",
+    "TerraceCam": "Terrace level outdoor view facing the terrace door. Monitors anyone approaching from outside. Key concern: break-in via terrace, unauthorized roof access."
+  },
+  "camera_policy_zones": {
+    "GarageCam": "garage-entrance",
+    "TopStairCam": "indoor-stairs",
+    "TerraceCam": "terrace-exterior"
+  },
+  "camera_policy_zone_default": "entry",
+  "recent_events_window_seconds": 600,
+  "event_history_file": "/home/<USER>/frigate/storage/events-history.jsonl",
+  "event_history_window_seconds": 1800,
+  "event_history_max_lines": 5000,
+  "phase3_enabled": true,
+  "phase4_enabled": true,
+  "phase5_enabled": true,
+  "phase8_enabled": true,
+  "phase5_confirm_delay_seconds": 4,
+  "phase5_confirm_timeout_seconds": 90,
+  "phase5_confirm_risks": ["high", "critical"],
+  "whatsapp_enabled": true
+}
