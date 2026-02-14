@@ -1,6 +1,6 @@
 # Drishtik — AI-Powered Security Camera System
 
-> **Drishtik** (दृष्टिक) means "intelligent vision" in Hindi
+> **Drishtik** (दृष्टिक) means "intelligent vision" 
 
 Turn standard IP cameras into an AI security brain. Every person detection is analyzed by a local vision language model that describes who is there, what they're doing, and the threat level — then delivers structured alerts to your phone, smart speakers, and home dashboard.
 
