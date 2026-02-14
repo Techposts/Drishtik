@@ -2,26 +2,15 @@
 
 > **Drishtik** (दृष्टि) means "vision" in Hindi
 
-Frigate NVR + Local Vision AI (Ollama qwen2.5vl) + Rule-Based Severity Scoring + Professional WhatsApp Alerts + Home Assistant + Alexa
-
 Turn standard IP cameras into an AI security brain. Every person detection is analyzed by a local vision language model that describes who is there, what they're doing, and the threat level — then delivers structured alerts to your phone, smart speakers, and home dashboard.
 
----
-
-## Table of Contents
-
-- [What It Does](#what-it-does)
-- [Architecture](#architecture)
-- [3-Pillar Alert System](#3-pillar-alert-system)
-- [Hardware](#hardware)
-- [System Requirements](#system-requirements)
-- [Setup Guide](#setup-guide)
-- [Alert Examples](#alert-examples)
-- [Phase System](#phase-system)
-- [Configuration](#configuration)
-- [Repository Layout](#repository-layout)
-- [Documentation](#documentation)
-- [Sensitive Files](#sensitive-files)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=2Fwbpcf-HOM">
+    <img src="https://img.youtube.com/vi/2Fwbpcf-HOM/maxresdefault.jpg" alt="Drishtik — AI Security Camera System" width="700">
+  </a>
+  <br>
+  <em>Watch: Full project walkthrough and demo</em>
+</p>
 
 ---
 
@@ -38,6 +27,19 @@ Turn standard IP cameras into an AI security brain. Every person detection is an
 - **Event memory** tracks detection history for pattern awareness
 - **Multi-step reasoning** re-confirms high/critical alerts with a second AI pass
 - Filters WhatsApp to **medium+ risk only** — low-risk events go to HA/logs only
+- **Web control panel** for managing all settings, running diagnostics, and viewing reports
+
+---
+
+## WhatsApp Alert
+
+Real alert with snapshot, structured analysis, and video clip attached:
+
+<p align="center">
+  <img src="images/whatsapp-alert.png" alt="WhatsApp Security Alert with snapshot and clip" width="400">
+  <br>
+  <em>Structured WhatsApp alert — snapshot, AI analysis, severity, behavior, risk, and 15s video clip</em>
+</p>
 
 ---
 
@@ -108,11 +110,90 @@ Structured alerts with emoji severity indicators, organized sections (EVENT, SUB
 
 ---
 
+## Drishtik Control Panel
+
+A built-in web UI for managing all settings without SSH or config file editing.
+
+### Overview & Diagnostics
+
+<p align="center">
+  <img src="images/overview.png" alt="Control Panel Overview" width="420">
+  &nbsp;&nbsp;
+  <img src="images/diagnostics.png" alt="Diagnostics & Policy Simulator" width="420">
+</p>
+<p align="center">
+  <em>Left: Overview — system health, synthetic events, Frigate config editor, operator runbook</em>
+  <br>
+  <em>Right: Diagnostics — test suite, policy simulator with dry-run</em>
+</p>
+
+### Features & Home Assistant
+
+<p align="center">
+  <img src="images/features.png" alt="Feature Switches" width="420">
+  &nbsp;&nbsp;
+  <img src="images/home-assistant.png" alt="Home Assistant Settings" width="420">
+</p>
+<p align="center">
+  <em>Left: Feature toggles — Smart Policy, Event Memory, Confirmation Gate, Reports</em>
+  <br>
+  <em>Right: Home Assistant — WhatsApp recipients, HA connection, known faces, zone lights</em>
+</p>
+
+### AI Engine & Camera NVR
+
+<p align="center">
+  <img src="images/openclaw-ai-agent.png" alt="OpenClaw AI Agent Settings" width="420">
+  &nbsp;&nbsp;
+  <img src="images/frigate-nvr.png" alt="Frigate NVR Config" width="420">
+</p>
+<p align="center">
+  <em>Left: OpenClaw AI — endpoints, model selection, WhatsApp channel policy, gateway controls</em>
+  <br>
+  <em>Right: Frigate NVR — config.yml editor, validation, backups, restart controls</em>
+</p>
+
+### Summaries & Performance
+
+<p align="center">
+  <img src="images/summaries.png" alt="Summaries & Reports" width="420">
+  &nbsp;&nbsp;
+  <img src="images/performance.png" alt="Performance Metrics" width="420">
+</p>
+<p align="center">
+  <em>Left: Daily/weekly reports — event counts, risk distribution, action breakdown</em>
+  <br>
+  <em>Right: Performance metrics — event rates, success rates, service health</em>
+</p>
+
+### Audit Trail & Admin
+
+<p align="center">
+  <img src="images/audits.png" alt="Audit Trail" width="420">
+  &nbsp;&nbsp;
+  <img src="images/admin-config.png" alt="Admin Configuration" width="420">
+</p>
+<p align="center">
+  <em>Left: Activity history — timestamped log of all config changes and actions</em>
+  <br>
+  <em>Right: Admin — user management, auth settings, audit signing, service logs</em>
+</p>
+
+### Service Logs
+
+<p align="center">
+  <img src="images/service-logs.png" alt="Service Logs" width="420">
+  <br>
+  <em>Live service logs viewer for bridge, OpenClaw, and Frigate</em>
+</p>
+
+---
+
 ## Hardware
 
 ### Reference Build
 
-Runs on a **12-year-old Lenovo S20-30 laptop** with:
+This system runs on a **12-year-old Lenovo S20-30 laptop** with:
 
 - **Google Coral TPU (Half Mini PCIe)** replacing the WiFi card
 - **TP-Link USB 3.0 to Gigabit Ethernet** for network
@@ -122,9 +203,15 @@ Runs on a **12-year-old Lenovo S20-30 laptop** with:
 
 Vision AI runs on a separate **Mac M4 Mini** via Ollama (can also use cloud API).
 
-### Build Video
+### Build Video — WiFi Card to Coral TPU
 
-[![Coral TPU install](https://img.youtube.com/vi/ePSMDSl6QvM/0.jpg)](https://www.youtube.com/watch?v=ePSMDSl6QvM)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=ePSMDSl6QvM">
+    <img src="https://img.youtube.com/vi/ePSMDSl6QvM/hqdefault.jpg" alt="Replacing WiFi card with Coral TPU" width="480">
+  </a>
+  <br>
+  <em>Watch: Replacing the Half Mini PCIe WiFi card with a Google Coral TPU</em>
+</p>
 
 ---
 
@@ -200,15 +287,7 @@ Apply `config/ha-frigate-ai-automation.yaml` to your HA automations. See [docs/H
 
 ### Step 8: Configure Runtime Settings
 
-Edit `bridge-runtime-config.json` for:
-- Camera context descriptions (per-camera security notes)
-- Camera zone mappings
-- Ollama API endpoint
-- WhatsApp recipients
-- Cooldown, rate limits
-- Phase toggles (policy, memory, reasoning)
-
-See [config/bridge-runtime-config.json.example](config/bridge-runtime-config.json.example).
+Edit `bridge-runtime-config.json` for cameras, zones, Ollama endpoint, WhatsApp recipients, cooldowns, and phase toggles. See [config/bridge-runtime-config.json.example](config/bridge-runtime-config.json.example).
 
 ### Step 9: Enable Auto-Start & Test
 
@@ -218,59 +297,6 @@ systemctl --user status frigate-openclaw-bridge.service
 ```
 
 Walk in front of a camera and check WhatsApp + HA + Alexa.
-
----
-
-## Alert Examples
-
-### WhatsApp Alert (Medium Risk)
-
-```
-[Snapshot Image]
-
-🚨 *AI SECURITY ALERT*
-Severity: 🟡 *MEDIUM*
-
-📍 *EVENT*
-Location: TerraceCam
-Zone: Terrace Exterior
-Time: 17:35:00 • 14 Feb 2026
-
-👤 *SUBJECT*
-Identity: Unknown
-Male in dark hoodie, jeans, backpack
-
-🎯 *BEHAVIOR OBSERVED*
-Approaching terrace door from outside.
-Looking around repeatedly. Hood up.
-
-🧠 *RISK ASSESSMENT*
-Threat: MEDIUM
-Confidence: 0.78
-Reason: Unusual approach to restricted entry
-
-📍 *CONTEXT*
-Building: Occupied
-Known faces: No
-
-⚡ *SYSTEM ACTION*
-🔔 Owner notified
-💾 Clip saved
-
-⚠️ *ESCALATION CONDITIONS*
-Upgrades to HIGH if subject stays >60s
-
-[15s Video Clip]
-```
-
-### Alexa Announcement
-
-> "Security alert from TerraceCam. Medium priority. Unknown male in dark hoodie approaching terrace door. Looking around repeatedly. Risk: unusual approach to restricted entry. Clip has been saved."
-
-### HA Mobile Notification
-
-Title: `🟡 TerraceCam — MEDIUM`
-Body: Full structured analysis with severity, subject, behavior, and risk.
 
 ---
 
@@ -307,7 +333,7 @@ The bridge implements capabilities in phases, each independently toggleable:
 
 | Setting | Where | What |
 |---------|-------|------|
-| `ollama_api` | runtime config | Ollama VLM endpoint (e.g. `http://192.168.1.30:11434`) |
+| `ollama_api` | runtime config | Ollama VLM endpoint |
 | `ollama_model` | runtime config | Vision model (e.g. `qwen2.5vl:7b`) |
 | `whatsapp_to` | runtime config | Recipient phone numbers |
 | `cooldown_seconds` | runtime config | Per-camera alert rate limit (default: 30) |
@@ -325,6 +351,7 @@ Drishtik/
 +-- README.md                          # This file
 +-- SECURITY.md                        # Sensitive files policy
 +-- CHANGELOG.md                       # Version history
++-- images/                            # Screenshots and media
 +-- config/
 |   +-- bridge-runtime-config.json.example  # Runtime config template
 |   +-- frigate-config.yml             # Frigate config (redacted)
