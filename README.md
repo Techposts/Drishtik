@@ -259,9 +259,11 @@ bash scripts/openclaw/install-openclaw.sh
 
 **Option A — Local Ollama (recommended):**
 ```bash
-# On a machine with enough RAM
-ollama pull qwen2.5vl:7b
+# On the Mac M4 Mini (or any Apple Silicon Mac with 8GB+ RAM)
+bash scripts/setup-ollama-mac.sh
 ```
+This interactive script installs Ollama, pulls qwen2.5vl:7b, configures LAN access,
+and sets up auto-start via launchd. It prints the `ollama_api` URL to use in your bridge config.
 
 **Option B — Cloud (OpenAI):**
 ```bash
@@ -379,6 +381,7 @@ Drishtik/
 |   +-- install.sh                     # Combined installer
 |   +-- setup-frigate-ai.sh           # Pipeline installer
 |   +-- setup-frigate-ai-prereqs.sh   # Prerequisites checker
+|   +-- setup-ollama-mac.sh           # Mac Ollama VLM setup (Apple Silicon)
 |   +-- frigate-openclaw-bridge.py    # Bridge script (template)
 |   +-- openclaw/
 |       +-- README.md                  # OpenClaw reference guide
