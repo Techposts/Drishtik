@@ -361,7 +361,6 @@ The bridge implements capabilities in phases, each independently toggleable:
 ```
 Drishtik/
 +-- README.md                          # This file
-+-- SECURITY.md                        # Sensitive files policy
 +-- CHANGELOG.md                       # Version history
 +-- images/                            # Screenshots and media
 +-- config/
@@ -406,4 +405,4 @@ Drishtik/
 
 ## Sensitive Files
 
-Real tokens, phone numbers, and auth profiles are **excluded** from this repo. See [SECURITY.md](SECURITY.md). Use the `.example` config files as templates.
+Real tokens, phone numbers, and auth profiles are **excluded** from this repo. Use the `.example` config files as templates.

@@ -31,3 +31,6 @@ storage/
 
 # Internal phase plans
 plan/
+
+# Security policy (internal)
+SECURITY.md
