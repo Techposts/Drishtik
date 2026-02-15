@@ -28,3 +28,6 @@ storage/
 
 # Backup files
 *.bak*
+
+# Internal phase plans
+plan/

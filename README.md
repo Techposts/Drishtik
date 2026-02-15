@@ -378,19 +378,15 @@ Drishtik/
 |   +-- OPENCLAW-CONFIG.md            # OpenClaw gateway config
 |   +-- CHEATSHEET.md                 # Quick reference commands
 +-- scripts/
-|   +-- install.sh                     # Combined installer
-|   +-- setup-frigate-ai.sh           # Pipeline installer
-|   +-- setup-frigate-ai-prereqs.sh   # Prerequisites checker
-|   +-- setup-ollama-mac.sh           # Mac Ollama VLM setup (Apple Silicon)
-|   +-- frigate-openclaw-bridge.py    # Bridge script (template)
-|   +-- openclaw/
-|       +-- README.md                  # OpenClaw reference guide
-|       +-- install-openclaw.sh        # OpenClaw installer
-|       +-- setup-https-proxy.sh       # HTTPS reverse proxy
-+-- plan/
-    +-- README.md                      # Phase roadmap overview
-    +-- phase-1/ through phase-8/      # Per-phase plans
-    +-- phase-3-5/                     # Known faces plan
+    +-- install.sh                     # Combined installer
+    +-- setup-frigate-ai.sh           # Pipeline installer
+    +-- setup-frigate-ai-prereqs.sh   # Prerequisites checker
+    +-- setup-ollama-mac.sh           # Mac Ollama VLM setup (Apple Silicon)
+    +-- frigate-openclaw-bridge.py    # Bridge script (template)
+    +-- openclaw/
+        +-- README.md                  # OpenClaw reference guide
+        +-- install-openclaw.sh        # OpenClaw installer
+        +-- setup-https-proxy.sh       # HTTPS reverse proxy
 ```
 
 ---
@@ -405,7 +401,6 @@ Drishtik/
 | [API Keys](docs/OPENCLAW-API-KEYS.md) | OpenAI/Anthropic key setup |
 | [OpenClaw Config](docs/OPENCLAW-CONFIG.md) | Gateway + messaging config |
 | [Cheat Sheet](docs/CHEATSHEET.md) | Quick commands reference |
-| [Phase Roadmap](plan/README.md) | Implementation phases |
 
 ---
 
