@@ -1047,6 +1047,46 @@ def _format_whatsapp_alert(camera: str, event_id: str, analysis_text: str,
     recent_count = policy.get("recent_events_count", 0)
     recent_line = f"\nRecent: {recent_count} events in last 10 min" if recent_count > 0 else ""
 
+    def _one_line(text: str, max_len: int = 180) -> str:
+        text = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(text) > max_len:
+            return text[: max_len - 3] + "..."
+        return text
+
+    # LOW alerts use a compact template: 1-line subject + 1-line behavior.
+    if risk_level == "LOW":
+        subj_line = _one_line(subject_desc or "Person detected")
+        beh_line = _one_line(behavior or "Person detected in view")
+        msg = (
+            f"\U0001f6a8 *AI SECURITY ALERT*\n"
+            f"Severity: {risk_icon} *{risk_level}*\n"
+            f"\n"
+            f"\U0001f4cd *EVENT*\n"
+            f"Location: {camera}\n"
+            f"Zone: {camera_zone}\n"
+            f"Time: {time_str} \u2022 {date_str}\n"
+            f"Event: `{event_id[:35]}`\n"
+            f"\n"
+            f"\U0001f464 *SUBJECT*\n"
+            f"{subj_line}\n"
+            f"\n"
+            f"\U0001f3af *BEHAVIOR OBSERVED*\n"
+            f"{beh_line}\n"
+            f"\n"
+            f"\U0001f9e0 *RISK ASSESSMENT*\n"
+            f"Threat: {risk_level}\n"
+            f"Confidence: {conf_display}\n"
+            f"Reason: _{reason}_\n"
+            f"\n"
+            f"\u26a1 *SYSTEM ACTION*\n"
+            f"{action_text}\n"
+            f"\n"
+            f"\U0001f4ce *MEDIA*\n"
+            f"{snap_line}\n"
+            f"{clip_line}"
+        )
+        return msg
+
     msg = (
         f"\U0001f6a8 *AI SECURITY ALERT*\n"
         f"Severity: {risk_icon} *{risk_level}*\n"
@@ -1123,11 +1163,13 @@ def deliver_whatsapp_message(camera: str, event_id: str, analysis_text: str,
         delivery_msg = (
             f"Send the following security alert to WhatsApp number {number}. "
             f"Target: {number}. Do not extract targets from message body. "
+            "Send exactly one WhatsApp message. Do not send any confirmation, "
+            "summary, or follow-up message. "
             f"Forward EXACTLY as-is to {number}:\n\n"
         ) + message
         payload = {
             "message": delivery_msg,
-            "deliver": True,
+            "deliver": False,
             "channel": "whatsapp",
             "to": number,
             "name": "Frigate",
