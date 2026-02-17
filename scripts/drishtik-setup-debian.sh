@@ -183,7 +183,7 @@ info "The RTSP URL includes the camera's username and password."
 info "Check your camera manual or app if you don't know the URL."
 echo ""
 
-declare -A CAMERAS
+declare -A CAMERAS=()
 CAM_ORDER=()
 while true; do
     echo -ne "  ${GREEN}+${NC}  Camera (blank line when done): "
@@ -200,7 +200,7 @@ while true; do
     success "Added: $cam_name → $cam_url"
 done
 
-if [[ ${#CAMERAS[@]} -eq 0 ]]; then
+if [[ ${#CAM_ORDER[@]} -eq 0 ]]; then
     fail "You need at least one camera. Re-run the script when you have RTSP URLs ready."
     exit 1
 fi
@@ -249,13 +249,21 @@ info "At least one number is recommended."
 echo ""
 
 WHATSAPP_NUMBERS=()
+info "Enter one number per line, or comma-separated (e.g. +91xxx,+1xxx)."
+echo ""
 while true; do
     echo -ne "  ${GREEN}+${NC}  WhatsApp number (blank line when done): "
-    read -r num
-    [[ -z "$num" ]] && break
-    [[ "$num" != +* ]] && num="+$num"
-    WHATSAPP_NUMBERS+=("$num")
-    success "Added: $num"
+    read -r num_input
+    [[ -z "$num_input" ]] && break
+    # Split comma-separated numbers
+    IFS=',' read -ra nums <<< "$num_input"
+    for num in "${nums[@]}"; do
+        num="$(echo "$num" | tr -d ' ')"  # trim spaces
+        [[ -z "$num" ]] && continue
+        [[ "$num" != +* ]] && num="+$num"
+        WHATSAPP_NUMBERS+=("$num")
+        success "Added: $num"
+    done
 done
 
 if [[ ${#WHATSAPP_NUMBERS[@]} -eq 0 ]]; then
@@ -294,7 +302,7 @@ echo -e "    IP:             $SERVER_IP"
 echo -e "    Install path:   $PROJECT_DIR"
 echo -e "    User:           $LINUX_USER"
 echo ""
-echo -e "  ${BOLD}Cameras (${#CAMERAS[@]})${NC}"
+echo -e "  ${BOLD}Cameras (${#CAM_ORDER[@]})${NC}"
 for cam in "${CAM_ORDER[@]}"; do
     echo -e "    $cam → ${CAMERAS[$cam]}"
 done
@@ -329,8 +337,17 @@ ask_yn "Everything correct? Proceed with installation?" "Y" PROCEED
 # ═══════════════════════════════════════════════════════════════════════════
 banner "Installing — System Packages"
 
+# Remove broken Coral repo entry if present (prevents apt update errors)
+if [[ -f /etc/apt/sources.list.d/coral-edgetpu.list ]]; then
+    # Check if it's the old unsigned version
+    if ! grep -q "signed-by" /etc/apt/sources.list.d/coral-edgetpu.list 2>/dev/null; then
+        info "Removing old unsigned Coral TPU repo entry..."
+        sudo rm -f /etc/apt/sources.list.d/coral-edgetpu.list
+    fi
+fi
+
 info "Updating package lists..."
-sudo apt update -qq
+sudo apt update -qq 2>/dev/null
 
 info "Installing base packages..."
 sudo apt install -y -qq ca-certificates curl gnupg git python3 python3-venv python3-full \
@@ -347,38 +364,122 @@ else
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
 $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt update -qq
+    sudo apt update -qq 2>/dev/null
     sudo apt install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin > /dev/null 2>&1
-    sudo usermod -aG docker "$LINUX_USER"
-    success "Docker installed (you may need to log out and back in for group to take effect)"
 fi
+# Ensure current user is in docker group
+if ! groups "$LINUX_USER" 2>/dev/null | grep -qw docker; then
+    sudo usermod -aG docker "$LINUX_USER"
+    info "Added $LINUX_USER to docker group"
+fi
+success "Docker ready: $(docker --version 2>&1 | head -1)"
 
 # ── Coral TPU driver ──
-if [[ -e /dev/apex_0 ]] || lsusb 2>/dev/null | grep -qi "google.*coral\|1a6e:089a\|18d1:9302"; then
-    success "Coral TPU detected"
-else
-    info "Installing Coral TPU driver..."
-    echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list > /dev/null
-    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - 2>/dev/null
-    sudo apt update -qq
-    sudo apt install -y -qq libedgetpu1-std > /dev/null 2>&1
-    if [[ "$CORAL_TYPE" == "pci" && -e /dev/apex_0 ]]; then
-        success "Coral PCIe detected at /dev/apex_0"
-    elif [[ "$CORAL_TYPE" == "usb" ]]; then
-        success "Coral USB driver installed"
+CORAL_READY=no
+if [[ -e /dev/apex_0 ]]; then
+    success "Coral PCIe TPU detected at /dev/apex_0"
+    CORAL_READY=yes
+elif lsusb 2>/dev/null | grep -qi "google.*coral\|1a6e:089a\|18d1:9302"; then
+    success "Coral USB TPU detected"
+    CORAL_READY=yes
+fi
+
+if [[ "$CORAL_READY" == "no" ]]; then
+    # Check if PCIe Coral hardware is present but driver not loaded
+    CORAL_PCI_PRESENT=no
+    if lspci 2>/dev/null | grep -qi "coral\|global unichip\|089a"; then
+        CORAL_PCI_PRESENT=yes
+        info "Coral PCIe hardware detected — installing drivers..."
     else
-        warn "Coral TPU driver installed but device not detected — may need a reboot"
+        info "Installing Coral Edge TPU runtime..."
+    fi
+
+    # Add Coral repo with proper signing
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        | sudo gpg --yes --dearmor -o /etc/apt/keyrings/coral-edgetpu.gpg 2>/dev/null || true
+    echo "deb [signed-by=/etc/apt/keyrings/coral-edgetpu.gpg] https://packages.cloud.google.com/apt coral-edgetpu-stable main" \
+        | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list > /dev/null
+    sudo apt update -qq 2>/dev/null
+
+    # Install Edge TPU runtime
+    if sudo apt install -y -qq libedgetpu1-std 2>/dev/null; then
+        success "Edge TPU runtime installed"
+    else
+        warn "Could not install Edge TPU runtime — install manually: https://coral.ai/docs/accelerator/get-started/"
+    fi
+
+    # For PCIe Coral: need gasket/apex kernel driver to create /dev/apex_0
+    if [[ "$CORAL_PCI_PRESENT" == "yes" || "$CORAL_TYPE" == "pci" ]]; then
+        info "Installing PCIe Coral kernel driver..."
+        sudo apt install -y -qq linux-headers-$(uname -r) dkms 2>/dev/null || true
+
+        # Build gasket driver from Google's upstream source
+        # The packaged gasket-dkms is broken on kernel 6.x+ (API changes)
+        info "Building gasket driver from source (kernel $(uname -r))..."
+        sudo rm -rf /tmp/gasket-driver
+        if git clone --quiet https://github.com/google/gasket-driver.git /tmp/gasket-driver 2>/dev/null; then
+            cd /tmp/gasket-driver
+
+            # Patch for kernel 6.x compatibility: no_llseek was removed
+            sudo sed -i 's/no_llseek/noop_llseek/g' src/gasket_core.c
+
+            # Build
+            if sudo make -C "/lib/modules/$(uname -r)/build" M="$(pwd)/src" modules 2>/dev/null; then
+                sudo make -C "/lib/modules/$(uname -r)/build" M="$(pwd)/src" modules_install 2>/dev/null
+                sudo depmod -a 2>/dev/null
+                success "Gasket driver built and installed"
+            else
+                warn "Gasket driver build failed — check kernel headers"
+            fi
+            cd - > /dev/null
+        else
+            warn "Could not clone gasket driver repo"
+        fi
+
+        # Set up udev rules for apex device
+        if [[ ! -f /etc/udev/rules.d/65-apex.rules ]]; then
+            echo 'SUBSYSTEM=="apex", MODE="0660", GROUP="apex"' | sudo tee /etc/udev/rules.d/65-apex.rules > /dev/null
+        fi
+        sudo groupadd -f apex 2>/dev/null || true
+        sudo usermod -aG apex "$LINUX_USER" 2>/dev/null || true
+
+        # Load the modules
+        sudo modprobe gasket 2>/dev/null || true
+        sudo modprobe apex 2>/dev/null || true
+        sudo udevadm control --reload-rules 2>/dev/null || true
+        sudo udevadm trigger 2>/dev/null || true
+        sleep 2
+
+        if [[ -e /dev/apex_0 ]]; then
+            success "Coral PCIe ready at /dev/apex_0"
+            CORAL_READY=yes
+        else
+            warn "Coral PCIe driver installed but /dev/apex_0 not yet available"
+            warn "A reboot may be required — run: sudo reboot"
+            warn "After reboot, re-run this script or just start Frigate"
+        fi
     fi
 fi
 
-# ── Node.js ──
-if command -v node &>/dev/null; then
-    success "Node.js already installed: $(node --version)"
+# ── Node.js + npm ──
+NODE_OK=no
+# OpenClaw requires Node >= 22.12.0
+NODE_MAJOR=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo "0")
+if [[ "$NODE_MAJOR" -ge 22 ]] && command -v npm &>/dev/null; then
+    success "Node.js already installed: $(node --version), npm: $(npm --version)"
+    NODE_OK=yes
 else
-    info "Installing Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1
+    [[ "$NODE_MAJOR" -gt 0 ]] && info "Node.js $(node --version) found but OpenClaw needs >= 22.x — upgrading..."
+    info "Installing Node.js 22.x (required by OpenClaw)..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - > /dev/null 2>&1
     sudo apt install -y -qq nodejs > /dev/null 2>&1
-    success "Node.js installed: $(node --version)"
+    if command -v node &>/dev/null && command -v npm &>/dev/null; then
+        success "Node.js installed: $(node --version), npm: $(npm --version)"
+        NODE_OK=yes
+    else
+        warn "Node.js/npm install had issues — OpenClaw gateway may not work"
+    fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -410,12 +511,19 @@ for f in "${CORE_FILES[@]}"; do
     fi
     if [[ -n "$src" && -f "$src" ]]; then
         cp "$src" "$PROJECT_DIR/$f"
+        # Replace <HOME_USER> placeholder with actual username
+        if [[ "$f" == *.py ]]; then
+            sed -i "s|<HOME_USER>|${LINUX_USER}|g" "$PROJECT_DIR/$f"
+        fi
         success "Deployed $f"
     elif [[ -n "$REPO_ROOT" ]]; then
         warn "$f not found in repo — download from GitHub manually"
     else
         # Try direct download as fallback
         if curl -fsSL "https://raw.githubusercontent.com/techposts/drishtik/main/$f" -o "$PROJECT_DIR/$f" 2>/dev/null; then
+            if [[ "$f" == *.py ]]; then
+                sed -i "s|<HOME_USER>|${LINUX_USER}|g" "$PROJECT_DIR/$f"
+            fi
             success "Downloaded $f"
         else
             warn "Could not get $f — download from GitHub: $REPO_URL"
@@ -438,6 +546,8 @@ password_file /etc/mosquitto/passwd_drishtik
 EOF
 
 sudo mosquitto_passwd -b -c /etc/mosquitto/passwd_drishtik "$MQTT_USER" "$MQTT_PASS" 2>/dev/null
+sudo chown mosquitto:mosquitto /etc/mosquitto/passwd_drishtik
+sudo chmod 640 /etc/mosquitto/passwd_drishtik
 sudo systemctl restart mosquitto
 sudo systemctl enable mosquitto > /dev/null 2>&1
 sleep 1
@@ -481,7 +591,7 @@ for cam in "${CAM_ORDER[@]}"; do
           default: 7"
 done
 
-info "Generating config.yml with your ${#CAMERAS[@]} camera(s)..."
+info "Generating config.yml with your ${#CAM_ORDER[@]} camera(s)..."
 cat > "$PROJECT_DIR/config.yml" << EOF
 # Drishtik — Frigate NVR Config (auto-generated)
 
@@ -493,10 +603,10 @@ detectors:
 mqtt:
   enabled: true
   topic_prefix: frigate
-  host: 127.0.0.1
+  host: ${SERVER_IP}
   port: ${MQTT_PORT}
   user: ${MQTT_USER}
-  password: ${MQTT_PASS}
+  password: "${MQTT_PASS}"
 
 objects:
   track:
@@ -516,13 +626,63 @@ snapshots:
 
 cameras:${CAMERAS_YAML}
 EOF
-success "config.yml created with ${#CAMERAS[@]} camera(s)"
+success "config.yml created with ${#CAM_ORDER[@]} camera(s)"
 
 info "Generating docker-compose.yml..."
-if [[ "$CORAL_TYPE" == "pci" ]]; then
-    DEVICE_LINE="      - /dev/apex_0:/dev/apex_0"
+
+# Build device line — only add if device actually exists
+DEVICE_SECTION=""
+if [[ "$CORAL_TYPE" == "pci" && -e /dev/apex_0 ]]; then
+    DEVICE_SECTION="    devices:
+      - /dev/apex_0:/dev/apex_0"
+elif [[ "$CORAL_TYPE" == "usb" ]]; then
+    DEVICE_SECTION="    devices:
+      - /dev/bus/usb:/dev/bus/usb"
 else
-    DEVICE_LINE="      - /dev/bus/usb:/dev/bus/usb"
+    warn "Coral TPU device not available — Frigate will use CPU detection (slower)"
+    warn "After reboot (if Coral PCIe), re-run or manually add device to docker-compose.yml"
+    # Switch config.yml to CPU detector if Coral not ready
+    info "Configuring Frigate for CPU detection as fallback..."
+fi
+
+# If Coral is not ready, update config.yml to use cpu detector
+if [[ -z "$DEVICE_SECTION" ]]; then
+    cat > "$PROJECT_DIR/config.yml" << EOF
+# Drishtik — Frigate NVR Config (auto-generated)
+# NOTE: Using CPU detector — switch to edgetpu after Coral is available
+
+detectors:
+  cpu:
+    type: cpu
+    num_threads: 4
+
+mqtt:
+  enabled: true
+  topic_prefix: frigate
+  host: ${SERVER_IP}
+  port: ${MQTT_PORT}
+  user: ${MQTT_USER}
+  password: "${MQTT_PASS}"
+
+objects:
+  track:
+    - person
+    - cat
+    - dog
+
+record:
+  enabled: true
+  retain:
+    days: 3
+
+snapshots:
+  enabled: true
+  retain:
+    default: 7
+
+cameras:${CAMERAS_YAML}
+EOF
+    success "config.yml updated with CPU detector (switch to Coral after reboot)"
 fi
 
 cat > "$PROJECT_DIR/docker-compose.yml" << EOF
@@ -532,9 +692,9 @@ services:
     container_name: frigate
     image: ghcr.io/blakeblackshear/frigate:0.15.1
     restart: unless-stopped
+    privileged: true
     shm_size: "256mb"
-    devices:
-${DEVICE_LINE}
+${DEVICE_SECTION}
     volumes:
       - ${PROJECT_DIR}/config.yml:/config/config.yml
       - ${PROJECT_DIR}/storage:/media/frigate
@@ -550,14 +710,35 @@ ${DEVICE_LINE}
 EOF
 success "docker-compose.yml created"
 
-info "Starting Frigate container (this pulls the image on first run)..."
+info "Starting Frigate container (this pulls the image on first run — may take a few minutes)..."
 cd "$PROJECT_DIR"
-if docker compose up -d 2>/dev/null; then
-    sleep 5
-    if docker ps --filter name=frigate --format '{{.Names}}' 2>/dev/null | grep -q frigate; then
-        success "Frigate running — UI at http://${SERVER_IP}:5000"
+# Use sg to pick up docker group without requiring logout, fall back to sudo
+if sg docker -c "docker compose up -d" 2>/dev/null || sudo docker compose up -d 2>/dev/null; then
+    info "Waiting for Frigate to become healthy..."
+    FRIGATE_OK=no
+    for i in $(seq 1 12); do
+        sleep 5
+        HEALTH=$(sudo docker inspect frigate --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+        if [[ "$HEALTH" == "healthy" ]]; then
+            FRIGATE_OK=yes
+            break
+        elif [[ "$HEALTH" == "unhealthy" ]]; then
+            break
+        fi
+        echo -ne "  ${BLUE}ℹ${NC}  Frigate: $HEALTH ($((i*5))s)...\r"
+    done
+    echo ""
+    if [[ "$FRIGATE_OK" == "yes" ]]; then
+        success "Frigate running and healthy — UI at http://${SERVER_IP}:5000"
     else
-        warn "Frigate container started but may still be initializing — check docker logs frigate"
+        # Check if it's a config validation error causing restart loop
+        CONFIG_ERR=$(sudo docker logs frigate 2>&1 | grep -c "Config Validation Errors" || true)
+        if [[ "$CONFIG_ERR" -gt 0 ]]; then
+            fail "Frigate has config validation errors — check: sudo docker logs frigate | grep -A5 'Config Validation'"
+            ERRORS=$((ERRORS + 1))
+        else
+            warn "Frigate container started but may still be initializing — check: sudo docker logs frigate"
+        fi
     fi
 else
     warn "Could not start Frigate — if Docker group issue, log out/in and run: cd $PROJECT_DIR && docker compose up -d"
@@ -569,42 +750,61 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 banner "Installing — OpenClaw Gateway"
 
-if command -v openclaw &>/dev/null || [[ -f "$HOME/.npm-global/bin/openclaw" ]]; then
-    success "OpenClaw already installed"
+# Ensure npm is available
+if ! command -v npm &>/dev/null; then
+    warn "npm not found — cannot install OpenClaw"
+    warn "Fix: sudo apt install -y npm && then re-run this script"
+    ERRORS=$((ERRORS + 1))
 else
-    info "Installing OpenClaw..."
+    # Set up npm global directory (avoids needing sudo for npm -g)
     mkdir -p "$HOME/.npm-global"
     npm config set prefix "$HOME/.npm-global" 2>/dev/null || true
     export PATH="$HOME/.npm-global/bin:$PATH"
-    npm install -g openclaw > /dev/null 2>&1
-    if [[ -f "$HOME/.npm-global/bin/openclaw" ]]; then
-        success "OpenClaw installed"
-        # Add to PATH permanently
-        if ! grep -q '.npm-global/bin' "$HOME/.bashrc" 2>/dev/null; then
-            echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
-            info "Added ~/.npm-global/bin to PATH in .bashrc"
-        fi
+
+    if command -v openclaw &>/dev/null || [[ -f "$HOME/.npm-global/bin/openclaw" ]]; then
+        success "OpenClaw already installed"
     else
-        warn "OpenClaw install may have issues — check: npm install -g openclaw"
-        ERRORS=$((ERRORS + 1))
+        info "Installing OpenClaw (this may take a minute)..."
+        if npm install -g openclaw 2>&1 | tail -3; then
+            if [[ -f "$HOME/.npm-global/bin/openclaw" ]]; then
+                success "OpenClaw installed"
+            else
+                warn "OpenClaw binary not found after install"
+                ERRORS=$((ERRORS + 1))
+            fi
+        else
+            warn "OpenClaw npm install failed"
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+
+    # Add to PATH permanently
+    if ! grep -q '.npm-global/bin' "$HOME/.bashrc" 2>/dev/null; then
+        echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
+        info "Added ~/.npm-global/bin to PATH in .bashrc"
     fi
 fi
 
 # Workspace + skill
 mkdir -p "$HOME/.openclaw/workspace/skills/frigate"
 mkdir -p "$HOME/.openclaw/workspace/ai-snapshots"
+mkdir -p "$HOME/.openclaw/workspace/ai-clips"
 
 # Generate webhook token
 WEBHOOK_TOKEN=$(head -c 16 /dev/urandom 2>/dev/null | xxd -p 2>/dev/null || echo "frigate-hook-$(date +%s)")
 
 # Build WhatsApp JSON arrays
-WA_JSON="["; WA_RECIPIENTS_JSON="["
-for i in "${!WHATSAPP_NUMBERS[@]}"; do
-    [[ $i -gt 0 ]] && WA_JSON+="," && WA_RECIPIENTS_JSON+=","
-    WA_JSON+="\"${WHATSAPP_NUMBERS[$i]}\""
-    WA_RECIPIENTS_JSON+="\"${WHATSAPP_NUMBERS[$i]}\""
-done
-WA_JSON+="]"; WA_RECIPIENTS_JSON+="]"
+WA_JSON="["
+WA_RECIPIENTS_JSON="["
+if [[ ${#WHATSAPP_NUMBERS[@]} -gt 0 ]]; then
+    for i in "${!WHATSAPP_NUMBERS[@]}"; do
+        [[ $i -gt 0 ]] && WA_JSON+="," && WA_RECIPIENTS_JSON+=","
+        WA_JSON+="\"${WHATSAPP_NUMBERS[$i]}\""
+        WA_RECIPIENTS_JSON+="\"${WHATSAPP_NUMBERS[$i]}\""
+    done
+fi
+WA_JSON+="]"
+WA_RECIPIENTS_JSON+="]"
 
 # openclaw.json
 if [[ -f "$HOME/.openclaw/openclaw.json" ]]; then
@@ -614,26 +814,51 @@ else
     info "Creating openclaw.json..."
     cat > "$HOME/.openclaw/openclaw.json" << EOF
 {
-  "server": { "port": 18789 },
   "hooks": {
     "enabled": true,
     "token": "${WEBHOOK_TOKEN}",
-    "path": "/hooks"
+    "path": "/hooks",
+    "allowRequestSessionKey": true
   },
   "models": {
-    "default": "litellm/${AI_MODEL}",
-    "litellm": { "baseUrl": "${OLLAMA_URL}" }
+    "providers": {
+      "ollama": {
+        "baseUrl": "${OLLAMA_URL}",
+        "models": [{"id": "${AI_MODEL}", "name": "${AI_MODEL}"}]
+      }
+    }
   },
   "channels": {
     "whatsapp": {
-      "enabled": true,
-      "allowFrom": ${WA_JSON}
+      "dmPolicy": "pairing",
+      "allowFrom": ${WA_JSON},
+      "groupPolicy": "allowlist"
     }
   },
-  "gateway": { "port": 18789 }
+  "gateway": {
+    "port": 18789,
+    "mode": "local"
+  },
+  "plugins": {
+    "entries": {
+      "whatsapp": { "enabled": true }
+    }
+  }
 }
 EOF
     success "openclaw.json created"
+fi
+
+# Fix permissions and run doctor
+chmod 700 "$HOME/.openclaw" 2>/dev/null || true
+chmod 600 "$HOME/.openclaw/openclaw.json" 2>/dev/null || true
+mkdir -p "$HOME/.openclaw/agents/main/sessions" "$HOME/.openclaw/credentials" 2>/dev/null
+
+# Run doctor --fix if openclaw is available
+if [[ -f "$HOME/.npm-global/bin/openclaw" ]]; then
+    info "Running openclaw doctor --fix..."
+    PATH="$HOME/.npm-global/bin:$PATH" openclaw doctor --fix > /dev/null 2>&1 || true
+    success "OpenClaw config validated"
 fi
 
 # Deploy SKILL.md — check repo first, then create
@@ -914,17 +1139,21 @@ echo -e "    Mosquitto MQTT:     ${SERVER_IP}:${MQTT_PORT}"
 echo ""
 echo -e "  ${BOLD}Next Steps${NC}"
 echo ""
-echo -e "    ${CYAN}1.${NC} Open the Control Panel in your browser:"
+echo -e "    ${CYAN}1.${NC} Connect WhatsApp (required for alerts):"
+echo -e "       ${BOLD}bash ~/drishtik/scripts/drishtik-setup-openclaw.sh${NC}"
+echo -e "       This links your WhatsApp via QR code and configures AI models."
+echo ""
+echo -e "    ${CYAN}2.${NC} Open the Control Panel in your browser:"
 echo -e "       ${BOLD}http://${SERVER_IP}:18777${NC}"
 echo -e "       Login: admin / changeme-admin"
 echo -e "       Fine-tune camera context, light entities, run diagnostics."
 echo ""
 if [[ "$HAS_HA" == "yes" ]]; then
-    echo -e "    ${CYAN}2.${NC} Import the HA automation:"
+    echo -e "    ${CYAN}3.${NC} Import the HA automation:"
     echo -e "       File: ${BOLD}${PROJECT_DIR}/ha-frigate-ai-automation.yaml${NC}"
     echo -e "       HA → Settings → Automations → ⋯ → Edit in YAML → paste"
 else
-    echo -e "    ${CYAN}2.${NC} Home Assistant is optional — add it later via Control Panel."
+    echo -e "    ${CYAN}3.${NC} Home Assistant is optional — add it later via Control Panel."
 fi
 echo ""
 echo -e "  ${BOLD}Useful Commands${NC}"
