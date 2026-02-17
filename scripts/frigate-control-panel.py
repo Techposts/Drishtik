@@ -42,52 +42,40 @@ APPROVALS: dict[str, dict] = {}
 
 
 DEFAULT_CONFIG = {
-    "mqtt_host": "192.168.0.163",
-    "mqtt_port": 1885,
-    "mqtt_user": "mqtt-user",
-    "mqtt_pass": "techposts",
+    "mqtt_host": "localhost",
+    "mqtt_port": 1883,
+    "mqtt_user": "",
+    "mqtt_pass": "",
     "mqtt_topic_subscribe": "frigate/events",
     "mqtt_topic_publish": "openclaw/frigate/analysis",
     "frigate_api": "http://localhost:5000",
     "openclaw_analysis_webhook": "http://localhost:18789/hooks/agent",
     "openclaw_delivery_webhook": "http://localhost:18789/hooks/agent",
-    "openclaw_token": "frigate-hook-secret-2026",
+    "openclaw_token": "",
     "openclaw_analysis_agent_name": "main",
     "openclaw_delivery_agent_name": "main",
     "openclaw_analysis_model": "",
     "openclaw_analysis_model_fallback": "",
     "openclaw_analysis_webhook_fallback": "",
-    "ollama_api": "http://192.168.0.219:11434",
+    "ollama_api": "",
     "ollama_model": "qwen2.5vl:7b",
-    "whatsapp_to": ["+919958040437", "+919873240906"],
+    "whatsapp_to": [],
     "cooldown_seconds": 30,
-    "ha_url": "http://192.168.0.163:8123",
+    "ha_url": "",
     "ha_token": "REPLACE_WITH_HA_LONG_LIVED_TOKEN",
-    "camera_zone_lights": {
-        "GarageCam": ["light.garage"],
-        "TopStairCam": ["light.stairway"],
-        "TerraceCam": ["light.terrace"],
-    },
-    "camera_zone_lights_default": ["light.garage"],
-    "alarm_entity": "switch.security_siren",
+    "camera_zone_lights": {},
+    "camera_zone_lights_default": [],
+    "alarm_entity": "",
     "quiet_hours_start": 23,
     "quiet_hours_end": 6,
     "ha_home_mode_entity": "input_select.home_mode",
     "ha_known_faces_entity": "binary_sensor.known_faces_present",
     "exclude_known_faces": False,
-    "camera_context_notes": {
-        "GarageCam": "Garage entry + home entrance zone",
-        "TopStairCam": "Outside main door stair area",
-        "TerraceCam": "Inside door stair/landing area",
-    },
-    "camera_policy_zones": {
-        "GarageCam": "garage",
-        "TopStairCam": "entry",
-        "TerraceCam": "backyard",
-    },
+    "camera_context_notes": {},
+    "camera_policy_zones": {},
     "camera_policy_zone_default": "entry",
     "recent_events_window_seconds": 600,
-    "event_history_file": "/home/techposts/frigate/storage/events-history.jsonl",
+    "event_history_file": "",
     "event_history_window_seconds": 1800,
     "event_history_max_lines": 5000,
     "phase3_enabled": True,
@@ -104,6 +92,7 @@ DEFAULT_CONFIG = {
         "viewer": {"password": "changeme-viewer", "role": "viewer"},
     },
     "whatsapp_enabled": True,
+    "whatsapp_min_risk_level": "medium",
     "approval_required_high_impact": True,
     "audit_signing_key": "change-me-audit-key",
     "cluster_node_id": "node-1",
@@ -354,6 +343,13 @@ def _service_active(name: str) -> bool:
     return rc == 0 and out.strip() == "active"
 
 
+def _proc_active(pattern: str) -> bool:
+    rc, out, _ = run_cmd(["pgrep", "-af", pattern])
+    if rc != 0:
+        return False
+    return any(pattern in line for line in out.splitlines())
+
+
 def make_health() -> dict:
     cfg = load_config()
     mqtt_host = str(cfg.get("mqtt_host", "127.0.0.1"))
@@ -371,15 +367,25 @@ def make_health() -> dict:
     ha_host, ha_port = _host_port(ha_url, 8123)
     oc_host, oc_port = _host_port(oc_url, 18789)
 
-    rc, _, _ = run_cmd(["docker", "ps", "--format", "{{.Names}}"])
+    # Check Frigate via its API (works even without docker group)
     frigate_running = False
-    if rc == 0:
-        rc2, out2, _ = run_cmd(["docker", "ps", "--format", "{{.Names}}"])
-        frigate_running = "frigate" in out2.splitlines()
+    try:
+        import urllib.request as _ureq
+        with _ureq.urlopen("http://127.0.0.1:5000/api/version", timeout=3) as _r:
+            frigate_running = _r.status == 200
+    except Exception:
+        # Fallback to docker ps
+        rc, _, _ = run_cmd(["docker", "ps", "--format", "{{.Names}}"])
+        if rc == 0:
+            rc2, out2, _ = run_cmd(["docker", "ps", "--format", "{{.Names}}"])
+            frigate_running = "frigate" in out2.splitlines()
+
+    bridge_active = _service_active(BRIDGE_SERVICE) or _proc_active("frigate-openclaw-bridge.py")
+    control_panel_active = _service_active("frigate-control-panel") or _proc_active("frigate-control-panel.py")
 
     return {
-        "bridge": _service_active(BRIDGE_SERVICE),
-        "control_panel": _service_active("frigate-control-panel"),
+        "bridge": bridge_active,
+        "control_panel": control_panel_active,
         "frigate": frigate_running,
         "ha": _tcp_up(ha_host, ha_port),
         "openclaw": _tcp_up(oc_host, oc_port),
@@ -535,18 +541,48 @@ def save_openclaw_config_text(content: str) -> tuple[int, str, str]:
 
 
 def run_synthetic_trigger(event_id: str, camera: str, label: str) -> tuple[int, str, str]:
+    """Trigger a test event using a real Frigate event (for valid snapshot/clip).
+    If event_id looks synthetic or has no snapshot, find the latest real event."""
+    cfg = load_config()
+    frigate_api = cfg.get("frigate_api", "http://localhost:5000")
+    m_host = cfg.get("mqtt_host", "127.0.0.1")
+    m_port = int(cfg.get("mqtt_port", 1883))
+    m_user = cfg.get("mqtt_user", "")
+    m_pass = cfg.get("mqtt_pass", "")
+    m_topic = cfg.get("mqtt_topic_subscribe", "frigate/events")
+
+    # Try to find a real event with a snapshot
+    real_event_id = event_id
+    real_camera = camera
+    real_label = label
+    try:
+        import urllib.request, json as _json
+        resp = urllib.request.urlopen(f"{frigate_api}/api/events?limit=5&has_snapshot=1", timeout=5)
+        events = _json.loads(resp.read())
+        if events:
+            best = events[0]
+            real_event_id = best["id"]
+            real_camera = best.get("camera", camera)
+            real_label = best.get("label", label)
+    except Exception as exc:
+        pass  # Fall back to user-provided values
+
     code = (
         "import json\n"
         "import paho.mqtt.client as mqtt\n"
-        f"payload={{'type':'new','before':{{}},'after':{{'id':'{event_id}','camera':'{camera}','label':'{label}'}}}}\n"
+        f"payload={{'type':'new','before':{{}},'after':{{'id':'{real_event_id}','camera':'{real_camera}','label':'{real_label}'}}}}\n"
         "c=mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)\n"
-        "c.username_pw_set('mqtt-user','techposts')\n"
-        "c.connect('192.168.0.163',1885,60)\n"
-        "c.loop_start(); i=c.publish('frigate/events', json.dumps(payload), qos=1, retain=False)\n"
+        f"c.username_pw_set('{m_user}','{m_pass}')\n"
+        f"c.connect('{m_host}',{m_port},60)\n"
+        f"c.loop_start(); i=c.publish('{m_topic}', json.dumps(payload), qos=1, retain=False)\n"
         "i.wait_for_publish(timeout=5); print(i.rc)\n"
         "c.loop_stop(); c.disconnect()\n"
     )
-    return run_cmd([VENV_PYTHON, "-c", code])
+    rc, out, err = run_cmd([VENV_PYTHON, "-c", code])
+    # Add info about which event was used
+    info = f"Used event: {real_event_id} (camera={real_camera}, label={real_label})"
+    out = f"{out}\n{info}" if out else info
+    return rc, out, err
 
 
 def restart_frigate() -> tuple[int, str, str]:
@@ -1138,6 +1174,58 @@ INDEX_HTML = """<!doctype html>
         <h2>Core Settings</h2>
         <label>WhatsApp Numbers (comma separated)</label>
         <input id="whatsList" placeholder="+911..., +911..."/>
+        <h3 style="margin-top:14px;">MQTT Settings</h3>
+        <div class="row">
+          <div>
+            <label>MQTT Host</label>
+            <input id="mqttHost" placeholder="your-server-ip"/>
+          </div>
+          <div>
+            <label>MQTT Port</label>
+            <input id="mqttPort" type="number" placeholder="1883"/>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>MQTT User</label>
+            <input id="mqttUser" placeholder="mqtt-user"/>
+          </div>
+          <div>
+            <label>MQTT Password</label>
+            <input id="mqttPass" type="password" placeholder="mqtt password"/>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>MQTT Subscribe Topic</label>
+            <input id="mqttTopicSub" placeholder="frigate/events"/>
+          </div>
+          <div>
+            <label>MQTT Publish Topic</label>
+            <input id="mqttTopicPub" placeholder="openclaw/frigate/analysis"/>
+          </div>
+        </div>
+        <h3 style="margin-top:14px;">Frigate & Ollama</h3>
+        <div class="row">
+          <div>
+            <label>Frigate API URL</label>
+            <input id="frigateApi" placeholder="http://localhost:5000"/>
+          </div>
+          <div>
+            <label>Ollama API URL</label>
+            <input id="ollamaApi" placeholder="http://ollama-host:11434"/>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Ollama Model</label>
+            <input id="ollamaModel" placeholder="qwen2.5vl:7b"/>
+          </div>
+          <div>
+            <label>Cooldown (seconds)</label>
+            <input id="cooldownSec" type="number" placeholder="30"/>
+          </div>
+        </div>
         <div class="row">
           <div>
             <label>Quiet Hours Start</label>
@@ -1164,39 +1252,16 @@ INDEX_HTML = """<!doctype html>
         </div>
         <div class="sub">Known Faces expects a Home Assistant binary sensor. Auto face recognition requires a face stack (for example Double Take + CompreFace); otherwise use a manual helper sensor.</div>
         <div class="sw" style="margin-top:8px;"><label><input type="checkbox" id="excludeKnownFaces"/> Exclude Known Faces (skip alert + model analysis when known faces are present)</label></div>
-        <label style="margin-top:10px;">Camera Context Notes (used in model prompt)</label>
-        <div class="row">
-          <div>
-            <label>GarageCam Context</label>
-            <input id="ctxGarageCam" placeholder="Garage entry + home entrance zone"/>
-          </div>
-          <div>
-            <label>TopStairCam Context</label>
-            <input id="ctxTopStairCam" placeholder="Outside main door stair area"/>
-          </div>
-          <div>
-            <label>TerraceCam Context</label>
-            <input id="ctxTerraceCam" placeholder="Inside door stair/landing area"/>
-          </div>
-        </div>
-        <div class="btns">
+        <label style="margin-top:10px;">Camera Context Notes & Light Entities</label>
+        <div class="sub">Auto-detected from Frigate. Describe what each camera sees (used in AI prompt).</div>
+        <div class="btns" style="margin-bottom:8px;">
+          <button class="alt" onclick="refreshCameraFields()">Refresh Cameras from Frigate</button>
           <button class="alt" onclick="discoverHaEntities()">Discover HA Entities</button>
           <button class="alt" onclick="discoverHaControlEntities()">Discover HA Control Entities</button>
         </div>
         <pre id="haDiscoverOut"></pre>
-        <div class="row">
-          <div>
-            <label>Garage Light Entity</label>
-            <input id="garageLightEntity" placeholder="light.garage"/>
-          </div>
-          <div>
-            <label>TopStair Light Entity</label>
-            <input id="topStairLightEntity" placeholder="light.stairway"/>
-          </div>
-          <div>
-            <label>Terrace Light Entity</label>
-            <input id="terraceLightEntity" placeholder="light.terrace"/>
-          </div>
+        <div id="cameraFieldsContainer">
+          <div class="sub" style="color:#999;">Click "Refresh Cameras from Frigate" or save settings to auto-detect cameras.</div>
         </div>
         <label>Alarm/Siren Entity</label>
         <input id="alarmEntity" placeholder="switch.security_siren"/>
@@ -1265,6 +1330,17 @@ INDEX_HTML = """<!doctype html>
         <label>WhatsApp Recipients (comma separated)</label>
         <input id="ocWhatsList" placeholder="+919..., +919..."/>
         <div class="sw"><label><input type="checkbox" id="ocWhatsappEnabled"/> Enable WhatsApp Delivery</label></div>
+        <div class="row">
+          <div>
+            <label>Min Alert Level for WhatsApp</label>
+            <select id="ocMinRiskLevel">
+              <option value="low">Low (all alerts)</option>
+              <option value="medium" selected>Medium (medium+)</option>
+              <option value="high">High (high+critical only)</option>
+              <option value="critical">Critical only</option>
+            </select>
+          </div>
+        </div>
         <h2 style="margin-top:10px;">OpenClaw WhatsApp Channel Policy</h2>
         <div class="row">
           <div>
@@ -1678,14 +1754,8 @@ APP_JS = r"""
       document.getElementById('homeModeEntity').value = cfg.ha_home_mode_entity || '';
       document.getElementById('knownFacesEntity').value = cfg.ha_known_faces_entity || '';
       document.getElementById('excludeKnownFaces').checked = !!cfg.exclude_known_faces;
-      const ctx = cfg.camera_context_notes || {};
-      document.getElementById('ctxGarageCam').value = ctx.GarageCam || '';
-      document.getElementById('ctxTopStairCam').value = ctx.TopStairCam || '';
-      document.getElementById('ctxTerraceCam').value = ctx.TerraceCam || '';
-      const c = cfg.camera_zone_lights || {};
-      document.getElementById('garageLightEntity').value = (c.GarageCam || [])[0] || '';
-      document.getElementById('topStairLightEntity').value = (c.TopStairCam || [])[0] || '';
-      document.getElementById('terraceLightEntity').value = (c.TerraceCam || [])[0] || '';
+      // Dynamic camera fields - render from config
+      renderCameraFields(cfg);
       document.getElementById('alarmEntity').value = cfg.alarm_entity || '';
       document.getElementById('phase3').checked = !!cfg.phase3_enabled;
       document.getElementById('phase4').checked = !!cfg.phase4_enabled;
@@ -1699,6 +1769,7 @@ APP_JS = r"""
         document.getElementById('ocDeliveryAgent').value = cfg.openclaw_delivery_agent_name || 'main';
         document.getElementById('ocWhatsList').value = (cfg.whatsapp_to || []).join(', ');
         document.getElementById('ocWhatsappEnabled').checked = !!cfg.whatsapp_enabled;
+        if (document.getElementById("ocMinRiskLevel")) { document.getElementById("ocMinRiskLevel").value = cfg.whatsapp_min_risk_level || "medium"; }
       }
     }
     function patchCfgFromQuick(cfg) {
@@ -1713,16 +1784,16 @@ APP_JS = r"""
       cfg.ha_home_mode_entity = document.getElementById('homeModeEntity').value.trim();
       cfg.ha_known_faces_entity = document.getElementById('knownFacesEntity').value.trim();
       cfg.exclude_known_faces = !!document.getElementById('excludeKnownFaces').checked;
-      cfg.camera_context_notes = {
-        GarageCam: document.getElementById('ctxGarageCam').value.trim(),
-        TopStairCam: document.getElementById('ctxTopStairCam').value.trim(),
-        TerraceCam: document.getElementById('ctxTerraceCam').value.trim()
-      };
-      cfg.camera_zone_lights = {
-        GarageCam: [document.getElementById('garageLightEntity').value.trim()].filter(Boolean),
-        TopStairCam: [document.getElementById('topStairLightEntity').value.trim()].filter(Boolean),
-        TerraceCam: [document.getElementById('terraceLightEntity').value.trim()].filter(Boolean)
-      };
+      // Read dynamic camera fields
+      cfg.camera_context_notes = {};
+      cfg.camera_zone_lights = {};
+      document.querySelectorAll('[data-cam-ctx]').forEach(el => {
+        cfg.camera_context_notes[el.dataset.camCtx] = el.value.trim();
+      });
+      document.querySelectorAll('[data-cam-light]').forEach(el => {
+        const v = el.value.trim();
+        cfg.camera_zone_lights[el.dataset.camLight] = v ? [v] : [];
+      });
       cfg.alarm_entity = document.getElementById('alarmEntity').value.trim();
       cfg.phase3_enabled = document.getElementById('phase3').checked;
       cfg.phase4_enabled = document.getElementById('phase4').checked;
@@ -1738,8 +1809,61 @@ APP_JS = r"""
       cfg.openclaw_delivery_agent_name = document.getElementById('ocDeliveryAgent').value.trim() || 'main';
       cfg.whatsapp_to = document.getElementById('ocWhatsList').value.split(',').map(s => s.trim()).filter(Boolean);
       cfg.whatsapp_enabled = !!document.getElementById('ocWhatsappEnabled').checked;
+      cfg.whatsapp_min_risk_level = document.getElementById("ocMinRiskLevel") ? document.getElementById("ocMinRiskLevel").value : "medium";
       return cfg;
     }
+    // ---- Dynamic camera fields ----
+    let _cachedCameras = null;
+    async function fetchFrigateCameras() {
+      try {
+        const cfg = (await api('/api/config/raw')).config || {};
+        const frigateApi = cfg.frigate_api || 'http://localhost:5000';
+        // Use our backend proxy to avoid CORS
+        const d = await api('/api/frigate/cameras');
+        return d.cameras || [];
+      } catch (e) { return []; }
+    }
+    function renderCameraFields(cfg) {
+      const container = document.getElementById('cameraFieldsContainer');
+      if (!container) return;
+      const ctx = cfg.camera_context_notes || {};
+      const lights = cfg.camera_zone_lights || {};
+      // Get camera names from config keys + any from Frigate
+      const cameras = new Set([...Object.keys(ctx), ...Object.keys(lights)]);
+      if (_cachedCameras) _cachedCameras.forEach(c => cameras.add(c));
+      if (cameras.size === 0) {
+        container.innerHTML = '<div class="sub" style="color:#999;">No cameras found. Click "Refresh Cameras from Frigate".</div>';
+        return;
+      }
+      let html = '';
+      for (const cam of [...cameras].sort()) {
+        html += `<div class="row" style="margin-bottom:4px;">
+          <div style="flex:2"><label>${cam} Context</label><input data-cam-ctx="${cam}" placeholder="Describe what ${cam} sees" value="${(ctx[cam]||'').replace(/"/g,'&quot;')}"/></div>
+          <div style="flex:1"><label>${cam} Light</label><input data-cam-light="${cam}" placeholder="light.entity" value="${((lights[cam]||[])[0]||'').replace(/"/g,'&quot;')}"/></div>
+        </div>`;
+      }
+      container.innerHTML = html;
+    }
+    async function refreshCameraFields() {
+      try {
+        const cameras = await fetchFrigateCameras();
+        _cachedCameras = cameras;
+        const d = await api('/api/config/raw');
+        const cfg = d.config || {};
+        // Add any new cameras from Frigate to context notes
+        cameras.forEach(cam => {
+          if (!cfg.camera_context_notes) cfg.camera_context_notes = {};
+          if (!(cam in cfg.camera_context_notes)) cfg.camera_context_notes[cam] = '';
+          if (!cfg.camera_zone_lights) cfg.camera_zone_lights = {};
+          if (!(cam in cfg.camera_zone_lights)) cfg.camera_zone_lights[cam] = [];
+        });
+        renderCameraFields(cfg);
+        toast('Cameras refreshed from Frigate.');
+      } catch (e) {
+        toastErr(e.message || e);
+      }
+    }
+
     async function refreshStatus() {
       try {
         const d = await api('/api/status');
@@ -2130,7 +2254,7 @@ APP_JS = r"""
         const lights = (lightsRes.entities || []).map(x => x.entity_id);
         const sw = (switchRes.entities || []).map(x => x.entity_id);
         const pick = (arr, words) => arr.find(e => words.some(w => e.includes(w))) || arr[0] || '';
-        document.getElementById('garageLightEntity').value = pick(lights, ['garage']);
+        // HA entity discovery populates camera fields dynamically
         document.getElementById('topStairLightEntity').value = pick(lights, ['stair', 'top']);
         document.getElementById('terraceLightEntity').value = pick(lights, ['terrace', 'balcony']);
         document.getElementById('alarmEntity').value = pick(sw, ['siren', 'alarm', 'security']);
