@@ -10,7 +10,7 @@
 # Run:  bash drishtik-setup-ollama.sh
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
 # ---------------------------------------------------------------------------
 # Colors & helpers
@@ -47,7 +47,11 @@ ask_yn() {
     echo -ne "  ${GREEN}?${NC}  ${prompt} ${YELLOW}[${default}]${NC}: "
     read -r input
     input="${input:-$default}"
-    [[ "$input" =~ ^[Yy] ]] && printf -v "$varname" '%s' "yes" || printf -v "$varname" '%s' "no"
+    if [[ "$input" =~ ^[Yy] ]]; then
+        printf -v "$varname" '%s' "yes"
+    else
+        printf -v "$varname" '%s' "no"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -113,23 +117,34 @@ banner "Step 1/5 — Install Ollama"
 
 ERRORS=0
 
-if command -v ollama &>/dev/null; then
-    OLLAMA_BIN="$(command -v ollama)"
+# Find ollama binary — check PATH and common install locations
+find_ollama() {
+    command -v ollama 2>/dev/null && return
+    for p in /opt/homebrew/bin/ollama /opt/homebrew/opt/ollama/bin/ollama /usr/local/bin/ollama /usr/bin/ollama; do
+        [[ -x "$p" ]] && echo "$p" && return
+    done
+    # Last resort: ask brew where it is
+    if command -v brew &>/dev/null; then
+        local bp
+        bp="$(brew --prefix ollama 2>/dev/null)/bin/ollama"
+        [[ -x "$bp" ]] && echo "$bp" && return
+    fi
+    echo ""
+}
+
+OLLAMA_BIN="$(find_ollama)"
+
+if [[ -n "$OLLAMA_BIN" ]]; then
     success "Ollama already installed: $OLLAMA_BIN"
 else
     info "Installing Ollama..."
     if [[ "$IS_MAC" == "yes" ]] && command -v brew &>/dev/null; then
-        brew install ollama
+        brew install ollama || true
     else
-        curl -fsSL https://ollama.com/install.sh | sh
+        curl -fsSL https://ollama.com/install.sh | sh || true
     fi
 
-    OLLAMA_BIN="$(command -v ollama 2>/dev/null || echo "")"
-    if [[ -z "$OLLAMA_BIN" ]]; then
-        for p in /usr/local/bin/ollama /opt/homebrew/bin/ollama; do
-            [[ -x "$p" ]] && OLLAMA_BIN="$p" && break
-        done
-    fi
+    OLLAMA_BIN="$(find_ollama)"
     if [[ -z "$OLLAMA_BIN" ]]; then
         fail "Ollama install failed — install manually: https://ollama.com/download"
         exit 1
@@ -137,7 +152,14 @@ else
     success "Ollama installed: $OLLAMA_BIN"
 fi
 
-OLLAMA_ABS="$(readlink -f "$OLLAMA_BIN" 2>/dev/null || echo "$OLLAMA_BIN")"
+# macOS doesn't have readlink -f; use portable alternative
+if command -v greadlink &>/dev/null; then
+    OLLAMA_ABS="$(greadlink -f "$OLLAMA_BIN" 2>/dev/null || echo "$OLLAMA_BIN")"
+elif readlink -f "$OLLAMA_BIN" &>/dev/null; then
+    OLLAMA_ABS="$(readlink -f "$OLLAMA_BIN")"
+else
+    OLLAMA_ABS="$OLLAMA_BIN"
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 2 — Pull model
@@ -148,7 +170,7 @@ MODEL="qwen2.5vl:7b"
 
 # Start server temporarily if not running
 OLLAMA_WAS_RUNNING=no
-if pgrep -f "ollama serve" &>/dev/null; then
+if pgrep -f "ollama serve" &>/dev/null || pgrep -x "ollama" &>/dev/null; then
     OLLAMA_WAS_RUNNING=yes
     success "Ollama server already running"
 else
@@ -156,21 +178,39 @@ else
     "$OLLAMA_BIN" serve &>/dev/null &
     OLLAMA_PID=$!
     sleep 3
+    if ! pgrep -f "ollama serve" &>/dev/null && ! pgrep -x "ollama" &>/dev/null; then
+        fail "Could not start Ollama server"
+        exit 1
+    fi
+    success "Ollama server started"
 fi
 
-if "$OLLAMA_BIN" list 2>/dev/null | grep -q "$MODEL"; then
-    success "Model $MODEL already pulled"
+# Check if model is already downloaded
+if "$OLLAMA_BIN" list 2>/dev/null | grep -q "qwen2.5vl"; then
+    success "Model $MODEL already downloaded — skipping pull"
 else
     info "Pulling $MODEL (~4.7 GB)..."
     echo ""
-    "$OLLAMA_BIN" pull "$MODEL"
-    echo ""
-    if "$OLLAMA_BIN" list 2>/dev/null | grep -q "$MODEL"; then
-        success "Model $MODEL pulled"
+    if "$OLLAMA_BIN" pull "$MODEL"; then
+        success "Model $MODEL pulled successfully"
     else
-        fail "Failed to pull $MODEL"
-        exit 1
+        # pull may exit non-zero but model could still be present
+        if "$OLLAMA_BIN" list 2>/dev/null | grep -q "qwen2.5vl"; then
+            success "Model $MODEL is available (pull exited non-zero but model present)"
+        else
+            fail "Failed to pull $MODEL"
+            exit 1
+        fi
     fi
+    echo ""
+fi
+
+# Verify model is loadable
+info "Verifying model is usable..."
+if "$OLLAMA_BIN" show "$MODEL" &>/dev/null; then
+    success "Model $MODEL verified"
+else
+    warn "Could not verify model metadata — may still work"
 fi
 
 # Stop temp server
@@ -198,9 +238,20 @@ else
     LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "")
 fi
 
-ask "This machine's LAN IP" "$LAN_IP" LAN_IP
 OLLAMA_PORT=11434
-ask "Ollama port" "$OLLAMA_PORT" OLLAMA_PORT
+
+if [[ -n "$LAN_IP" ]]; then
+    info "Detected LAN IP: ${BOLD}${LAN_IP}${NC}, Port: ${BOLD}${OLLAMA_PORT}${NC}"
+    ask_yn "Use these settings?" "Y" USE_DETECTED
+    if [[ "$USE_DETECTED" != "yes" ]]; then
+        ask "LAN IP" "$LAN_IP" LAN_IP
+        ask "Ollama port" "$OLLAMA_PORT" OLLAMA_PORT
+    fi
+else
+    warn "Could not auto-detect LAN IP"
+    ask "This machine's LAN IP" "" LAN_IP
+    ask "Ollama port" "$OLLAMA_PORT" OLLAMA_PORT
+fi
 
 OLLAMA_HOST="0.0.0.0:${OLLAMA_PORT}"
 OLLAMA_URL="http://${LAN_IP}:${OLLAMA_PORT}"
@@ -217,12 +268,13 @@ if [[ "$IS_MAC" == "yes" ]]; then
     PLIST_FILE="$PLIST_DIR/com.ollama.serve.plist"
     PLIST_LABEL="com.ollama.serve"
 
-    # Stop existing
-    if pgrep -f "ollama serve" &>/dev/null; then
-        pkill -f "ollama serve" 2>/dev/null || true
-        sleep 2
+    # Stop existing ollama processes
+    if launchctl list "$PLIST_LABEL" &>/dev/null; then
+        launchctl unload "$PLIST_FILE" 2>/dev/null || true
+        sleep 1
     fi
-    [[ -f "$PLIST_FILE" ]] && launchctl unload "$PLIST_FILE" 2>/dev/null || true
+    pkill -f "ollama serve" 2>/dev/null || true
+    sleep 2
 
     mkdir -p "$PLIST_DIR"
     cat > "$PLIST_FILE" << EOF
@@ -297,7 +349,7 @@ if [[ -n "$TAGS_RESP" ]] && echo "$TAGS_RESP" | grep -q "$MODEL"; then
     success "Local: $MODEL found"
 else
     warn "Local endpoint not responding yet — may still be starting"
-    ((ERRORS++)) || true
+    ERRORS=$((ERRORS + 1))
 fi
 
 # LAN check
@@ -307,7 +359,7 @@ if [[ -n "$LAN_RESP" ]] && echo "$LAN_RESP" | grep -q "models"; then
     success "LAN: reachable at $OLLAMA_URL"
 else
     warn "LAN endpoint not reachable — check firewall"
-    ((ERRORS++)) || true
+    ERRORS=$((ERRORS + 1))
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
