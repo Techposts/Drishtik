@@ -132,6 +132,34 @@ ask_yn "Ready to begin?" "Y" READY
 [[ "$READY" != "yes" ]] && echo "  Cancelled." && exit 0
 
 # ═══════════════════════════════════════════════════════════════════════════
+# PRE-FLIGHT — Install essential prerequisites
+# ═══════════════════════════════════════════════════════════════════════════
+banner "Pre-Flight — Installing Prerequisites"
+
+PREREQS_NEEDED=()
+for cmd in curl git jq; do
+    if ! command -v "$cmd" &>/dev/null; then
+        PREREQS_NEEDED+=("$cmd")
+    fi
+done
+
+if [[ ${#PREREQS_NEEDED[@]} -gt 0 ]]; then
+    info "Installing: ${PREREQS_NEEDED[*]}..."
+    sudo apt update -qq
+    sudo apt install -y -qq "${PREREQS_NEEDED[@]}" > /dev/null 2>&1
+    for cmd in "${PREREQS_NEEDED[@]}"; do
+        if command -v "$cmd" &>/dev/null; then
+            success "$cmd installed"
+        else
+            fail "$cmd failed to install"
+            exit 1
+        fi
+    done
+else
+    success "All prerequisites already installed (curl, git, jq)"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════
 # STEP 1 — GATHER ALL USER INPUTS
 # ═══════════════════════════════════════════════════════════════════════════
 banner "Step 1 — Your Server"
