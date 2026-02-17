@@ -15,7 +15,7 @@
 # Home Assistant is OPTIONAL — the system works standalone with WhatsApp.
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
 # ---------------------------------------------------------------------------
 # Colors & helpers
@@ -73,7 +73,11 @@ ask_yn() {
     echo -ne "  ${GREEN}?${NC}  ${prompt} ${YELLOW}[${default}]${NC}: "
     read -r input
     input="${input:-$default}"
-    [[ "$input" =~ ^[Yy] ]] && printf -v "$varname" '%s' "yes" || printf -v "$varname" '%s' "no"
+    if [[ "$input" =~ ^[Yy] ]]; then
+        printf -v "$varname" '%s' "yes"
+    else
+        printf -v "$varname" '%s' "no"
+    fi
 }
 
 ERRORS=0
@@ -387,7 +391,7 @@ for f in "${CORE_FILES[@]}"; do
             success "Downloaded $f"
         else
             warn "Could not get $f — download from GitHub: $REPO_URL"
-            ((ERRORS++)) || true
+            ERRORS=$((ERRORS + 1))
         fi
     fi
 done
@@ -414,7 +418,7 @@ if mosquitto_pub -h 127.0.0.1 -p "$MQTT_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" -t
     success "Mosquitto MQTT running and verified on port $MQTT_PORT"
 else
     warn "Mosquitto may not be responding — check: sudo systemctl status mosquitto"
-    ((ERRORS++)) || true
+    ERRORS=$((ERRORS + 1))
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -529,7 +533,7 @@ if docker compose up -d 2>/dev/null; then
     fi
 else
     warn "Could not start Frigate — if Docker group issue, log out/in and run: cd $PROJECT_DIR && docker compose up -d"
-    ((ERRORS++)) || true
+    ERRORS=$((ERRORS + 1))
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -554,7 +558,7 @@ else
         fi
     else
         warn "OpenClaw install may have issues — check: npm install -g openclaw"
-        ((ERRORS++)) || true
+        ERRORS=$((ERRORS + 1))
     fi
 fi
 
@@ -849,7 +853,7 @@ for svc in openclaw-gateway frigate-openclaw-bridge frigate-control-panel; do
         success "$svc: running"
     else
         warn "$svc: not running — check: journalctl --user -u $svc.service -n 20"
-        ((ERRORS++)) || true
+        ERRORS=$((ERRORS + 1))
     fi
 done
 
