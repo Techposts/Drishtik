@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+import fcntl
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
@@ -23,8 +24,8 @@ import requests
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-MQTT_HOST = "192.168.1.20"
-MQTT_PORT = 1885
+MQTT_HOST = "localhost"
+MQTT_PORT = 1883
 MQTT_USER = "<MQTT_USER>"
 MQTT_PASS = "<MQTT_PASS>"
 MQTT_TOPIC_SUBSCRIBE = "frigate/events"
@@ -39,17 +40,19 @@ OPENCLAW_DELIVERY_AGENT_NAME = os.getenv("OPENCLAW_DELIVERY_AGENT_NAME", "main")
 OPENCLAW_ANALYSIS_MODEL = os.getenv("OPENCLAW_ANALYSIS_MODEL", "litellm/qwen2.5vl:7b")
 OPENCLAW_ANALYSIS_MODEL_FALLBACK = os.getenv("OPENCLAW_ANALYSIS_MODEL_FALLBACK", "openai/gpt-4o-mini")
 OPENCLAW_ANALYSIS_WEBHOOK_FALLBACK = os.getenv("OPENCLAW_ANALYSIS_WEBHOOK_FALLBACK", "http://localhost:18789/hooks/agent")
-OPENCLAW_SESSIONS_DIR = Path(f"/home/<HOME_USER>/.openclaw/agents/{OPENCLAW_ANALYSIS_AGENT_NAME}/sessions")
+OPENCLAW_SESSIONS_DIR = Path(f"/home/techposts/.openclaw/agents/{OPENCLAW_ANALYSIS_AGENT_NAME}/sessions")
 OPENCLAW_SESSIONS_INDEX = OPENCLAW_SESSIONS_DIR / "sessions.json"
 
 OLLAMA_API = os.getenv("OLLAMA_API", "http://<OLLAMA_HOST>:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5vl:7b")
 
-SNAPSHOT_DIR = Path("/home/<HOME_USER>/frigate/storage/ai-snapshots")
-OPENCLAW_WORKSPACE = Path("/home/<HOME_USER>/.openclaw/workspace")
+SNAPSHOT_DIR = Path("/home/techposts/frigate/storage/ai-snapshots")
+OPENCLAW_WORKSPACE = Path("/home/techposts/.openclaw/workspace")
 OPENCLAW_MEDIA_DIR = OPENCLAW_WORKSPACE / "ai-snapshots"
+OPENCLAW_CLIP_DIR = OPENCLAW_WORKSPACE / "ai-clips"
 WHATSAPP_TO = ["+1234567890"]
 WHATSAPP_ENABLED = True
+WHATSAPP_MIN_RISK_LEVEL = "medium"
 
 COOLDOWN_SECONDS = 30  # minimum gap between alerts per camera
 
@@ -83,7 +86,7 @@ CAMERA_POLICY_ZONES: dict[str, str] = {
 }
 CAMERA_POLICY_ZONE_DEFAULT = "entry"
 RECENT_EVENTS_WINDOW_SECONDS = 600  # 10 minutes
-EVENT_HISTORY_FILE = Path("/home/<HOME_USER>/frigate/storage/events-history.jsonl")
+EVENT_HISTORY_FILE = Path("/home/techposts/frigate/storage/events-history.jsonl")
 EVENT_HISTORY_WINDOW_SECONDS = 1800  # 30 minutes
 EVENT_HISTORY_MAX_LINES = 5000
 
@@ -99,8 +102,8 @@ PHASE4_ENABLED = True
 PHASE8_ENABLED = True
 
 # Runtime config file (editable by control UI/API)
-RUNTIME_CONFIG_FILE = Path("/home/<HOME_USER>/frigate/bridge-runtime-config.json")
-SECRETS_ENV_FILE = Path("/home/<HOME_USER>/frigate/.secrets.env")
+RUNTIME_CONFIG_FILE = Path("/home/techposts/frigate/bridge-runtime-config.json")
+SECRETS_ENV_FILE = Path("/home/techposts/frigate/.secrets.env")
 
 # Alarm / siren entity (optional — used by notify_and_alarm)
 ALARM_ENTITY = "switch.security_siren"
@@ -154,7 +157,7 @@ def _load_runtime_config():
     global OPENCLAW_ANALYSIS_MODEL, OPENCLAW_ANALYSIS_MODEL_FALLBACK, OPENCLAW_ANALYSIS_WEBHOOK_FALLBACK
     global OPENCLAW_SESSIONS_DIR, OPENCLAW_SESSIONS_INDEX
     global OLLAMA_API, OLLAMA_MODEL
-    global WHATSAPP_TO, WHATSAPP_ENABLED, COOLDOWN_SECONDS
+    global WHATSAPP_TO, WHATSAPP_ENABLED, WHATSAPP_MIN_RISK_LEVEL, WHATSAPP_MIN_RISK_LEVEL, COOLDOWN_SECONDS
     global HA_URL, HA_TOKEN, CAMERA_ZONE_LIGHTS, CAMERA_ZONE_LIGHTS_DEFAULT
     global ALARM_ENTITY, QUIET_HOURS_START, QUIET_HOURS_END
     global HA_HOME_MODE_ENTITY, HA_KNOWN_FACES_ENTITY, EXCLUDE_KNOWN_FACES, CAMERA_CONTEXT_NOTES
@@ -185,15 +188,16 @@ def _load_runtime_config():
     OPENCLAW_ANALYSIS_MODEL = str(_cfg("openclaw_analysis_model", OPENCLAW_ANALYSIS_MODEL))
     OPENCLAW_ANALYSIS_MODEL_FALLBACK = str(_cfg("openclaw_analysis_model_fallback", OPENCLAW_ANALYSIS_MODEL_FALLBACK))
     OPENCLAW_ANALYSIS_WEBHOOK_FALLBACK = str(_cfg("openclaw_analysis_webhook_fallback", OPENCLAW_ANALYSIS_WEBHOOK_FALLBACK))
-    OPENCLAW_SESSIONS_DIR = Path(f"/home/<HOME_USER>/.openclaw/agents/{OPENCLAW_ANALYSIS_AGENT_NAME}/sessions")
+    OPENCLAW_SESSIONS_DIR = Path(f"/home/techposts/.openclaw/agents/{OPENCLAW_ANALYSIS_AGENT_NAME}/sessions")
     OPENCLAW_SESSIONS_INDEX = OPENCLAW_SESSIONS_DIR / "sessions.json"
     OLLAMA_API = str(_cfg("ollama_api", OLLAMA_API))
     OLLAMA_MODEL = str(_cfg("ollama_model", OLLAMA_MODEL))
 
     recipients = _cfg("whatsapp_to", WHATSAPP_TO)
     if isinstance(recipients, list) and recipients:
-        WHATSAPP_TO = ["+1234567890"]
+        WHATSAPP_TO = recipients
     WHATSAPP_ENABLED = bool(_cfg("whatsapp_enabled", WHATSAPP_ENABLED))
+    WHATSAPP_MIN_RISK_LEVEL = str(_cfg("whatsapp_min_risk_level", WHATSAPP_MIN_RISK_LEVEL)).lower()
     COOLDOWN_SECONDS = int(_cfg("cooldown_seconds", COOLDOWN_SECONDS))
 
     HA_URL = str(_cfg("ha_url", HA_URL))
@@ -259,6 +263,24 @@ _load_runtime_config()
 # ---------------------------------------------------------------------------
 last_alert: dict[str, float] = {}  # camera -> epoch of last alert
 recent_events: dict[str, list[float]] = {}  # camera -> list of event epochs
+_bridge_lock_handle = None
+
+
+def acquire_singleton_lock() -> bool:
+    """Prevent multiple bridge processes from running concurrently."""
+    global _bridge_lock_handle
+    lock_path = Path("/tmp/frigate-openclaw-bridge.lock")
+    fh = lock_path.open("w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    fh.seek(0)
+    fh.truncate(0)
+    fh.write(str(os.getpid()))
+    fh.flush()
+    _bridge_lock_handle = fh
+    return True
 
 
 def is_on_cooldown(camera: str) -> bool:
@@ -301,6 +323,18 @@ def stage_snapshot_for_openclaw(src: Path, event_id: str) -> Path | None:
         return None
 
 
+def stage_clip_for_openclaw(src: Path, event_id: str) -> Path | None:
+    """Copy clip into OpenClaw workspace so MEDIA:./... resolves correctly."""
+    try:
+        OPENCLAW_CLIP_DIR.mkdir(parents=True, exist_ok=True)
+        dest = OPENCLAW_CLIP_DIR / f"{event_id}.mp4"
+        shutil.copyfile(src, dest)
+        return dest
+    except Exception as exc:
+        log.warning("Failed to stage clip for OpenClaw: %s", exc)
+        return None
+
+
 def _ha_get_state(entity_id: str) -> str | None:
     """Read one Home Assistant entity state via REST API."""
     url = f"{HA_URL}/api/states/{entity_id}"
@@ -313,6 +347,9 @@ def _ha_get_state(entity_id: str) -> str | None:
         if resp.status_code == 200:
             data = resp.json()
             return str(data.get("state", "")).strip()
+        if resp.status_code == 404:
+            log.info("HA entity not found (optional): %s", entity_id)
+            return None
         log.warning("HA state read %s returned %d", entity_id, resp.status_code)
     except requests.RequestException as exc:
         log.warning("HA state read %s failed: %s", entity_id, exc)
@@ -588,8 +625,8 @@ def send_to_openclaw(camera: str, event_id: str, policy: dict | None = None,
     a cleaned message (without machine JSON)."""
     # OpenClaw only allows MEDIA:./relative paths for security
     # MEDIA lines must be relative and cannot use ".." per OpenClaw security rules.
-    # The gateway runs with HOME=/home/techposts, so use a workspace-relative path.
-    openclaw_rel_media = f"./frigate/storage/ai-snapshots/{event_id}.jpg"
+    # The gateway runs with HOME=~user, so use a workspace-relative path.
+    openclaw_rel_media = f"./ai-snapshots/{event_id}.jpg"
     openclaw_abs_media = str(OPENCLAW_MEDIA_DIR / f"{event_id}.jpg")
     if policy is None:
         policy = {
@@ -717,7 +754,7 @@ def send_confirmation_to_openclaw(camera: str, event_id: str, media_event_id: st
                                   initial_decision: dict, policy: dict,
                                   recent_events_summary: str) -> str | None:
     """Run Phase 5 second-pass confirmation using a fresh snapshot."""
-    openclaw_rel_media = f"./frigate/storage/ai-snapshots/{media_event_id}.jpg"
+    openclaw_rel_media = f"./ai-snapshots/{media_event_id}.jpg"
     openclaw_abs_media = str(OPENCLAW_MEDIA_DIR / f"{media_event_id}.jpg")
     prompt = (
         f"Confirmation check for camera '{camera}'. Re-check this newer snapshot: {openclaw_abs_media}\n\n"
@@ -962,10 +999,10 @@ def _format_whatsapp_alert(camera: str, event_id: str, analysis_text: str,
     # Action taken
     action_raw = str(decision.get("action", "notify_only"))
     action_map = {
-        "notify_only": "\U0001f514 Owner notified",
-        "notify_and_save_clip": "\U0001f514 Owner notified\n\U0001f4be Clip saved",
-        "notify_and_light": "\U0001f514 Owner notified\n\U0001f4be Clip saved\n\U0001f4a1 Lights activated",
-        "notify_and_speaker": "\U0001f514 Owner notified\n\U0001f4be Clip saved\n\U0001f50a Alexa announcement",
+        "notify_only": "\U0001f514 Alert sent",
+        "notify_and_save_clip": "\U0001f514 Alert sent\n\U0001f4be Clip saved",
+        "notify_and_light": "\U0001f514 Alert sent\n\U0001f4be Clip saved\n\U0001f4a1 Lights activated",
+        "notify_and_speaker": "\U0001f514 Alert sent\n\U0001f4be Clip saved\n\U0001f50a Alexa announcement",
         "notify_and_alarm": "\U0001f6a8 ALARM ACTIVATED\n\U0001f4a1 All lights ON\n\U0001f50a Speakers active\n\U0001f4be Clip saved",
     }
     action_text = action_map.get(action_raw, action_raw.replace("_", " ").title())
@@ -1068,26 +1105,26 @@ def deliver_whatsapp_message(camera: str, event_id: str, analysis_text: str,
     }
 
     # Build single message: snapshot MEDIA at top, formatted text, clip MEDIA at bottom
-    snapshot_media = f"MEDIA:./frigate/storage/ai-snapshots/{event_id}.jpg"
+    snapshot_media = f"MEDIA:./ai-snapshots/{event_id}.jpg"
     formatted_text = _format_whatsapp_alert(camera, event_id, analysis_text, decision, policy)
 
     # Check for clip (attach at bottom if exists)
     clip_path = SNAPSHOT_DIR.parent / "ai-clips" / f"{event_id}.mp4"
     clip_line = ""
     if clip_path.exists() and clip_path.stat().st_size > 1000:
-        clip_line = f"\nMEDIA:./frigate/storage/ai-clips/{event_id}.mp4"
+        clip_line = f"\nMEDIA:./ai-clips/{event_id}.mp4"
         log.info("Clip found for %s (%d bytes) — attaching to alert",
                  event_id, clip_path.stat().st_size)
 
     message = f"{snapshot_media}\n{formatted_text}{clip_line}"
 
-    forward_instruction = (
-        "DELIVERY MODE. Forward the EXACT message below to WhatsApp verbatim. "
-        "Do not rewrite or add anything. Preserve all formatting:\n\n"
-    )
-
     for number in WHATSAPP_TO:
-        delivery_msg = forward_instruction + message
+        # Build instruction that explicitly tells the agent WHERE to send
+        delivery_msg = (
+            f"Send the following security alert to WhatsApp number {number}. "
+            f"Target: {number}. Do not extract targets from message body. "
+            f"Forward EXACTLY as-is to {number}:\n\n"
+        ) + message
         payload = {
             "message": delivery_msg,
             "deliver": True,
@@ -1447,6 +1484,7 @@ def _action_save_clip(camera: str, event_id: str = "") -> bool:
         resp = requests.get(clip_url, timeout=30)
         if resp.status_code == 200 and len(resp.content) > 1000:
             clip_path.write_bytes(resp.content)
+            stage_clip_for_openclaw(clip_path, event_id)
             log.info("Saved clip %s (%d bytes)", clip_path, len(resp.content))
             return True
         log.warning("Clip download for %s returned %d (%d bytes)", event_id, resp.status_code, len(resp.content))
@@ -1685,7 +1723,7 @@ def publish_analysis(client: mqtt.Client, camera: str, label: str,
         "timestamp": now_ts.isoformat(),
         "event_id": event_id,
         "snapshot_path": str(snapshot_path),
-        "clip_url": f"http://192.168.1.10:5000/api/events/{event_id}/clip.mp4" if media_decision["clip"] else "",
+        "clip_url": f"{FRIGATE_API}/api/events/{event_id}/clip.mp4" if media_decision["clip"] else "",
     }
     result = client.publish(MQTT_TOPIC_PUBLISH, json.dumps(payload), qos=1, retain=True)
     log.info("Published analysis to %s (rc=%s)", MQTT_TOPIC_PUBLISH, result.rc)
@@ -1810,10 +1848,37 @@ def on_message(client, userdata, msg):
         execute_action(decision, camera, tts_msg, event_id=event_id)
         # WhatsApp delivery — only medium/high/critical (clip saved above is now available)
         alert_risk = decision.get("risk", "low")
-        if alert_risk in ("medium", "high", "critical"):
+        risk_levels = ["low", "medium", "high", "critical"]
+        min_risk = WHATSAPP_MIN_RISK_LEVEL
+        min_idx = risk_levels.index(min_risk) if min_risk in risk_levels else 1
+        alert_idx = risk_levels.index(alert_risk) if alert_risk in risk_levels else 0
+        if alert_idx >= min_idx:
             deliver_whatsapp_message(camera, event_id, analysis_text, decision, policy)
         else:
-            log.info("Skipping WhatsApp for %s — risk=%s (only medium+ sent to WhatsApp)", event_id, alert_risk)
+            log.info("Skipping WhatsApp for %s — risk=%s (min level=%s)", event_id, alert_risk, min_risk)
+        if PHASE4_ENABLED:
+            append_event_history(camera, event_id, decision)
+        _record_event(camera)
+    else:
+        log.warning("No AI analysis returned for %s; publishing fallback and continuing delivery flow", event_id)
+        decision = sanitize_decision({
+            "risk": "low",
+            "type": "unknown_person",
+            "confidence": 0.0,
+            "action": "notify_only",
+            "reason": "analysis unavailable",
+        })
+        analysis_text = f"[{camera}] Threat: LOW\nPerson detected. AI analysis unavailable."
+        publish_analysis(client, camera, label, analysis_text, event_id, snapshot_path, decision, policy)
+        tts_msg = make_tts(camera, analysis_text, decision, policy)
+        execute_action(decision, camera, tts_msg, event_id=event_id)
+        risk_levels = ["low", "medium", "high", "critical"]
+        min_risk = WHATSAPP_MIN_RISK_LEVEL
+        min_idx = risk_levels.index(min_risk) if min_risk in risk_levels else 1
+        if min_idx <= 0:
+            deliver_whatsapp_message(camera, event_id, analysis_text, decision, policy)
+        else:
+            log.info("Skipping WhatsApp fallback for %s — min level=%s", event_id, min_risk)
         if PHASE4_ENABLED:
             append_event_history(camera, event_id, decision)
         _record_event(camera)
@@ -1827,6 +1892,9 @@ def on_disconnect(client, userdata, flags, rc, properties=None):
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    if not acquire_singleton_lock():
+        log.error("Another bridge instance is already running; exiting.")
+        sys.exit(1)
     log.info("Frigate → OpenClaw bridge starting")
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
