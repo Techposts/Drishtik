@@ -1354,6 +1354,10 @@ def _fallback_decision(analysis: str) -> dict:
         det_type = "animal"
     elif "PERSON" in upper or "INDIVIDUAL" in upper or "MALE" in upper or "FEMALE" in upper:
         det_type = "unknown_person"
+
+    subject_desc, behavior = _extract_plaintext_subject_behavior(analysis)
+    identity = "known" if det_type == "known_person" else "unknown"
+
     # Map risk to action
     action_map = {"low": "notify_only", "medium": "notify_and_save_clip", "high": "notify_and_light", "critical": "notify_and_alarm"}
     return {
@@ -1361,8 +1365,59 @@ def _fallback_decision(analysis: str) -> dict:
         "type": det_type,
         "confidence": 0.4 if risk == "low" else 0.6,
         "action": action_map.get(risk, "notify_only"),
-        "reason": "Extracted from AI text (no structured JSON)" if analysis else "AI decision unavailable",
+        "reason": "Inferred from AI text" if analysis else "AI decision unavailable",
+        "subject": {"identity": identity, "description": subject_desc},
+        "behavior": behavior,
     }
+
+
+def _extract_plaintext_subject_behavior(analysis: str) -> tuple[str, str]:
+    """Infer appearance + behavior from freeform analysis text."""
+    if not analysis:
+        return "", "Person detected in view"
+
+    text = strip_json_block(analysis).strip()
+    lines = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        low = s.lower()
+        if not s:
+            continue
+        if low.startswith("media:") or "ai-snapshots/" in low or "ai-clips/" in low:
+            continue
+        if low.startswith("[") and "threat:" in low:
+            continue
+        if low.startswith("threat:") or low.startswith("json:") or low.startswith("reason:"):
+            continue
+        lines.append(s)
+
+    if not lines:
+        return "", "Person detected in view"
+
+    desc = ""
+    behavior = ""
+    desc_markers = ("wearing", "dressed", "male", "female", "man", "woman", "person", "individual", "hoodie", "shirt", "pants", "jacket")
+    behavior_markers = ("walking", "standing", "running", "loiter", "entering", "leaving", "looking", "reaching", "carrying", "talking", "waiting")
+
+    for ln in lines:
+        low = ln.lower()
+        if not desc and any(m in low for m in desc_markers):
+            desc = ln
+        if not behavior and any(m in low for m in behavior_markers):
+            behavior = ln
+        if desc and behavior:
+            break
+
+    if not desc:
+        desc = lines[0]
+    if not behavior:
+        behavior = lines[1] if len(lines) > 1 else "Person detected in view"
+
+    if len(desc) > 220:
+        desc = desc[:217] + "..."
+    if len(behavior) > 220:
+        behavior = behavior[:217] + "..."
+    return desc, behavior
 
 
 def sanitize_decision(decision: dict) -> dict:
